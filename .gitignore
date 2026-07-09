@@ -1,0 +1,4 @@
+node_modules/
+.env
+supercompras-panel/node_modules/
+supercompras-panel/.env
