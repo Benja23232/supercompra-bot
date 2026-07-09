@@ -52,10 +52,11 @@ export default function DetallePedido() {
         <h1 className="titulo-pagina">Detalle del Pedido #{String(pedido.id_pedido).slice(0, 8)}</h1>
       </div>
 
-      <div style={{ background: '#f5f5f5', padding: '1rem', borderRadius: '8px', marginBottom: '20px' }}>
-        <p><strong>Teléfono del cliente:</strong> +{pedido.whatsapp_id}</p>
-        <p><strong>Estado actual:</strong> {pedido.estado}</p>
-        <p><strong>Total abonado:</strong> ${pedido.total_compra}</p>
+      {/* Le sacamos el fondo y los bordes para que sea texto limpio */}
+      <div style={{ marginBottom: '20px' }}>
+        <p style={{ margin: '5px 0' }}><strong>Teléfono del cliente:</strong> +{pedido.whatsapp_id}</p>
+        <p style={{ margin: '5px 0' }}><strong>Estado actual:</strong> {pedido.estado}</p>
+        <p style={{ margin: '5px 0' }}><strong>Total abonado:</strong> ${pedido.total_compra}</p>
       </div>
 
       <h2>Productos comprados:</h2>
