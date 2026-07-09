@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
 
 export default function Pedidos() {
+  // Le agregamos <any[]> para que TypeScript sepa que es un array
   const [pedidos, setPedidos] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -24,7 +25,8 @@ export default function Pedidos() {
     fetchPedidos();
   }, []);
 
-  const cambiarEstado = async (id: string, nuevoEstado: string) => {
+  // Le definimos que 'id' puede ser cualquier cosa y 'nuevoEstado' es un texto (string)
+  const cambiarEstado = async (id: any, nuevoEstado: string) => {
     const { error } = await supabase
       .from('pedidos')
       .update({ estado: nuevoEstado })
@@ -34,7 +36,7 @@ export default function Pedidos() {
       alert('Error al actualizar. Revisá la política de UPDATE en Supabase.');
       console.error(error);
     } else {
-      fetchPedidos(); // Recargamos para ver el cambio
+      fetchPedidos(); 
     }
   };
 
@@ -64,6 +66,7 @@ export default function Pedidos() {
                 <th className="texto-izq">Nº Pedido</th>
                 <th className="texto-centro">Total</th>
                 <th className="texto-centro">Estado</th>
+                <th className="texto-centro">Acciones</th>
               </tr>
             </thead>
             <tbody>
@@ -85,11 +88,24 @@ export default function Pedidos() {
                       style={{ width: '140px', padding: '0.4rem', cursor: 'pointer' }}
                     >
                       <option value="Pendiente">Pendiente</option>
+                      <option value="Pendiente - Mañana">Pendiente - Mañana</option>
+                      <option value="Pendiente - Tarde">Pendiente - Tarde</option>
                       <option value="En Proceso">En Proceso</option>
                       <option value="Entregado">Entregado</option>
                       <option value="Cancelado">Cancelado</option>
                     </select>
                   </td>
+
+                  <td className="texto-centro">
+                    <Link 
+                      href={`/pedidos/${pedido.id_pedido}`} 
+                      className="btn btn-primario" 
+                      style={{ padding: '0.4rem 0.8rem', textDecoration: 'none', fontSize: '0.9rem' }}
+                    >
+                      👁️ Ver Detalle
+                    </Link>
+                  </td>
+
                 </tr>
               ))}
             </tbody>
