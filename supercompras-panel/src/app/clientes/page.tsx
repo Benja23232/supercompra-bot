@@ -49,7 +49,7 @@ export default function Clientes() {
             <thead>
               <tr>
                 <th className="texto-izq">Nombre</th>
-                <th className="texto-centro">WhatsApp ID</th>
+                <th className="texto-centro">Numero</th>
                 <th className="texto-centro">Fecha de Registro</th>
               </tr>
             </thead>
