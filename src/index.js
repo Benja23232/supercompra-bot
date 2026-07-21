@@ -96,7 +96,7 @@ app.post('/api/difusion', async (req, res) => {
 
         // B. Preparamos credenciales de Meta
         const token = process.env.WHATSAPP_TOKEN;
-        const phoneId = process.env.PHONE_NUMBER_ID; 
+        const phoneId = process.env.WHATSAPP_PHONE_ID;
 
         let enviados = 0;
         let fallidos = 0;
