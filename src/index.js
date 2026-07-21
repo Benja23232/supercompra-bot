@@ -1,6 +1,6 @@
 const express = require('express');
 const cors = require('cors');
-const axios = require('axios'); // <-- NUEVO: Para enviar las plantillas a Meta
+const axios = require('axios'); // <-- Para enviar las plantillas a Meta
 require('dotenv').config();
 
 // 1. Enchufamos la base de datos y la función de mensajes
@@ -73,9 +73,10 @@ app.post('/mercadopago-webhook', async (req, res) => {
     }
 });
 
-// 5. NUEVA PUERTA: Envío de Difusiones / Promociones
+// 5. NUEVA PUERTA: Envío de Difusiones / Promociones (Actualizada con Variables y código 'es')
 app.post('/api/difusion', async (req, res) => {
-    const { templateName } = req.body;
+    // Aceptamos también el array de variables desde el panel web
+    const { templateName, variables } = req.body;
 
     if (!templateName) {
         return res.status(400).json({ error: 'Falta el nombre de la plantilla' });
@@ -94,27 +95,53 @@ app.post('/api/difusion', async (req, res) => {
             return res.status(404).json({ error: 'No hay clientes registrados.' });
         }
 
-        // B. Preparamos credenciales de Meta
+        // B. Preparamos las variables para Meta
+        let componentesTemplate = [];
+        
+        // Formateamos las variables si el panel web nos envía alguna
+        if (variables && variables.length > 0) {
+            const parametrosMeta = variables.map(textoVariable => ({
+                type: 'text',
+                text: String(textoVariable)
+            }));
+
+            componentesTemplate = [
+                {
+                    type: 'body',
+                    parameters: parametrosMeta
+                }
+            ];
+        }
+
+        // C. Preparamos credenciales de Meta
         const token = process.env.WHATSAPP_TOKEN;
         const phoneId = process.env.WHATSAPP_PHONE_ID;
 
         let enviados = 0;
         let fallidos = 0;
 
-        // C. Bucle: Disparamos la plantilla a cada número
+        // D. Bucle: Disparamos la plantilla a cada número
         for (const numero of numerosUnicos) {
             try {
+                // Armamos el cuerpo básico del mensaje
+                const payloadMeta = {
+                    messaging_product: 'whatsapp',
+                    to: numero,
+                    type: 'template',
+                    template: {
+                        name: templateName,
+                        language: { code: 'es' } // Código oficial para Español genérico
+                    }
+                };
+
+                // Si hay variables, las inyectamos al mensaje
+                if (componentesTemplate.length > 0) {
+                    payloadMeta.template.components = componentesTemplate;
+                }
+
                 await axios.post(
                     `https://graph.facebook.com/v17.0/${phoneId}/messages`,
-                    {
-                        messaging_product: 'whatsapp',
-                        to: numero,
-                        type: 'template',
-                        template: {
-                            name: templateName,
-                            language: { code: 'es_AR' } // Ajustar si Meta lo aprobó como 'es'
-                        }
-                    },
+                    payloadMeta,
                     {
                         headers: { Authorization: `Bearer ${token}` }
                     }
@@ -126,7 +153,7 @@ app.post('/api/difusion', async (req, res) => {
             }
         }
 
-        // D. Devolvemos el reporte a tu panel Vercel
+        // E. Devolvemos el reporte a tu panel Vercel
         res.json({ 
             mensaje: 'Difusión finalizada con éxito', 
             total_clientes: numerosUnicos.length,
