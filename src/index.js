@@ -74,6 +74,19 @@ app.post('/mercadopago-webhook', async (req, res) => {
 });
 
 // 5. NUEVA PUERTA: Envío de Difusiones / Promociones (Actualizada con Variables y código 'es')
+// NUEVA PUERTA: Obtener lista de productos para el panel
+app.get('/api/productos', async (req, res) => {
+    try {
+        // Asumo que tu tabla se llama 'productos', ajustalo si se llama distinto
+        const result = await pool.query("SELECT id_producto, nombre, precio FROM productos WHERE estado = 'activo'"); 
+        // Nota: Si no tenés una columna 'estado', dejá solo "SELECT id_producto, nombre, precio FROM productos"
+        
+        res.json(result.rows);
+    } catch (error) {
+        console.error("❌ Error al obtener productos:", error);
+        res.status(500).json({ error: 'Error al obtener la lista de productos' });
+    }
+});
 app.post('/api/difusion', async (req, res) => {
     // Aceptamos también el array de variables desde el panel web
     const { templateName, variables } = req.body;
