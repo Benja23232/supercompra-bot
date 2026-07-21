@@ -77,9 +77,8 @@ app.post('/mercadopago-webhook', async (req, res) => {
 // NUEVA PUERTA: Obtener lista de productos para el panel
 app.get('/api/productos', async (req, res) => {
     try {
-        // Asumo que tu tabla se llama 'productos', ajustalo si se llama distinto
-        const result = await pool.query("SELECT id_producto, nombre, precio FROM productos WHERE estado = 'activo'"); 
-        // Nota: Si no tenés una columna 'estado', dejá solo "SELECT id_producto, nombre, precio FROM productos"
+        // Usamos el nombre real de tu columna: estado_catalogo = true
+        const result = await pool.query("SELECT id_producto, nombre, precio FROM productos WHERE estado_catalogo = true"); 
         
         res.json(result.rows);
     } catch (error) {
