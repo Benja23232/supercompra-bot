@@ -1,13 +1,17 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 
+// ⚠️ REEMPLAZÁ ESTO POR LA URL REAL DE TU SERVIDOR EN RENDER ⚠️
+const URL_BACKEND = 'https://supercompra-bot-backend.onrender.com';
+
 export default function Difusiones() {
-  // Dejamos el nombre de la plantilla fijo por defecto (el que enviaste a revisión)
   const [templateName, setTemplateName] = useState('promo_dinamica');
   
-  // Estados para los 4 huecos de tu plantilla
+  // Estado para guardar la lista de productos que viene de la base de datos
+  const [listaProductos, setListaProductos] = useState<any[]>([]);
+  
   const [prod1, setProd1] = useState('');
   const [prod2, setProd2] = useState('');
   const [precio, setPrecio] = useState('');
@@ -16,16 +20,31 @@ export default function Difusiones() {
   const [loading, setLoading] = useState(false);
   const [resultado, setResultado] = useState<any>(null);
 
+  // Cuando la página carga, vamos a buscar los productos al backend
+  useEffect(() => {
+    const cargarProductos = async () => {
+      try {
+        const res = await fetch(`${URL_BACKEND}/api/productos`);
+        const data = await res.json();
+        if (res.ok) {
+          setListaProductos(data);
+        }
+      } catch (error) {
+        console.error("Error cargando productos:", error);
+      }
+    };
+    
+    cargarProductos();
+  }, []);
+
   const enviarDifusion = async () => {
-    // 1. Validamos que no deje ningún hueco vacío
-    if (!templateName.trim() || !prod1.trim() || !prod2.trim() || !precio.trim() || !linkCatalogo.trim()) {
+    if (!templateName.trim() || !prod1 || !prod2 || !precio.trim() || !linkCatalogo.trim()) {
       alert('Por favor, completá todos los campos de la promoción.');
       return;
     }
 
-    // 2. Alerta de seguridad con vista previa
     const confirmar = confirm(
-      `⚠️ ATENCIÓN: Vas a enviar este mensaje a TODOS tus clientes:\n\n"¡Hola! 👋 Hoy en Supercompra tenemos ofertas exclusivas.\n🎉 Llevate ${prod1} y ${prod2} por un total de ${precio}..."\n\n¿Estás seguro? Esta acción no se puede deshacer y Meta cobrará por cada mensaje entregado.`
+      `⚠️ ATENCIÓN: Vas a enviar este mensaje a TODOS tus clientes:\n\n"¡Hola! 👋 Hoy en Supercompra tenemos ofertas exclusivas.\n🎉 Llevate ${prod1} y ${prod2} por un total de ${precio}..."\n\n¿Estás seguro?`
     );
     
     if (!confirmar) return;
@@ -34,10 +53,6 @@ export default function Difusiones() {
     setResultado(null);
 
     try {
-      // ⚠️ REEMPLAZÁ ESTO POR LA URL REAL DE TU SERVIDOR EN RENDER ⚠️
-      const URL_BACKEND = 'https://supercompra-bot-backend.onrender.com';
-      
-      // Agrupamos las variables en el MISMO ORDEN que los {{huecos}} de Meta
       const variablesOrdenadas = [prod1, prod2, precio, linkCatalogo];
 
       const response = await fetch(`${URL_BACKEND}/api/difusion`, {
@@ -57,12 +72,10 @@ export default function Difusiones() {
         throw new Error(data.error || 'Error al enviar la difusión');
       }
 
-      // 3. Éxito: Mostramos resultado y limpiamos el formulario
       setResultado(data);
       setProd1('');
       setProd2('');
       setPrecio('');
-      // No limpiamos el link porque suele ser siempre el mismo
       
     } catch (error: any) {
       console.error(error);
@@ -81,52 +94,57 @@ export default function Difusiones() {
       <div className="encabezado-pagina">
         <h1 style={{ fontSize: '2rem', marginBottom: '10px' }}>📢 Lanzar Promoción</h1>
         <p style={{ color: '#4b5563', marginBottom: '20px' }}>
-          Completá los campos para armar la oferta de la semana. El mensaje se enviará a todos los clientes registrados.
+          Elegí los productos de tu catálogo para armar la oferta.
         </p>
       </div>
 
       <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', padding: '2rem', borderRadius: '8px' }}>
         
-        <div style={{ marginBottom: '15px' }}>
-          <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Nombre de la Plantilla (Meta)</label>
-          <input 
-            type="text" 
-            value={templateName}
-            onChange={(e) => setTemplateName(e.target.value)}
-            style={{ width: '100%', padding: '0.8rem', border: '1px solid #ccc', borderRadius: '4px' }}
-          />
+        <div style={{ marginBottom: '15px', display: 'none' }}>
+          {/* Ocultamos esto para que el dueño no lo rompa, ya está fijo en el código */}
+          <input type="text" value={templateName} onChange={(e) => setTemplateName(e.target.value)} />
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '15px' }}>
           <div>
-            <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Producto 1 (ej: Coca-Cola 2L)</label>
-            <input 
-              type="text" 
-              value={prod1}
+            <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Producto 1</label>
+            <select 
+              value={prod1} 
               onChange={(e) => setProd1(e.target.value)}
-              placeholder="¿Qué producto?"
-              style={{ width: '100%', padding: '0.8rem', border: '1px solid #ccc', borderRadius: '4px' }}
-            />
+              style={{ width: '100%', padding: '0.8rem', border: '1px solid #ccc', borderRadius: '4px', backgroundColor: 'white' }}
+            >
+              <option value="">-- Elegí un producto --</option>
+              {listaProductos.map((prod) => (
+                <option key={`p1-${prod.id_producto}`} value={prod.nombre}>
+                  {prod.nombre}
+                </option>
+              ))}
+            </select>
           </div>
           <div>
-            <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Producto 2 (ej: Papas Lays)</label>
-            <input 
-              type="text" 
-              value={prod2}
+            <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Producto 2</label>
+            <select 
+              value={prod2} 
               onChange={(e) => setProd2(e.target.value)}
-              placeholder="¿Con qué lo combinás?"
-              style={{ width: '100%', padding: '0.8rem', border: '1px solid #ccc', borderRadius: '4px' }}
-            />
+              style={{ width: '100%', padding: '0.8rem', border: '1px solid #ccc', borderRadius: '4px', backgroundColor: 'white' }}
+            >
+              <option value="">-- Elegí un producto --</option>
+              {listaProductos.map((prod) => (
+                <option key={`p2-${prod.id_producto}`} value={prod.nombre}>
+                  {prod.nombre}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
 
         <div style={{ marginBottom: '15px' }}>
-          <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Precio Total (ej: $4500)</label>
+          <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Precio Total de la Promo (ej: $4500)</label>
           <input 
             type="text" 
             value={precio}
             onChange={(e) => setPrecio(e.target.value)}
-            placeholder="¿Cuánto salen los dos?"
+            placeholder="¿Cuánto salen los dos juntos?"
             style={{ width: '100%', padding: '0.8rem', border: '1px solid #ccc', borderRadius: '4px' }}
           />
         </div>
