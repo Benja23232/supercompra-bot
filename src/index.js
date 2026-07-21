@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const axios = require('axios'); // <-- NUEVO: Para enviar las plantillas a Meta
 require('dotenv').config();
 
 // 1. Enchufamos la base de datos y la función de mensajes
@@ -25,7 +26,7 @@ app.use(express.json());
 // 3. Activamos la ruta para WhatsApp
 app.use('/webhook', webhookRoutes);
 
-// 4. NUEVA PUERTA: Webhook de Mercado Pago
+// 4. Webhook de Mercado Pago
 app.post('/mercadopago-webhook', async (req, res) => {
     // A. Devolver el 200 OK rápido para que Mercado Pago no reintente
     res.sendStatus(200);
@@ -69,6 +70,73 @@ app.post('/mercadopago-webhook', async (req, res) => {
         }
     } catch (error) {
         console.error("❌ Error procesando webhook de Mercado Pago:", error);
+    }
+});
+
+// 5. NUEVA PUERTA: Envío de Difusiones / Promociones
+app.post('/api/difusion', async (req, res) => {
+    const { templateName } = req.body;
+
+    if (!templateName) {
+        return res.status(400).json({ error: 'Falta el nombre de la plantilla' });
+    }
+
+    try {
+        // A. Buscamos los números únicos directamente desde la base de datos
+        // DISTINCT hace que si un cliente compró 5 veces, su número traiga solo 1 vez.
+        const resPedidos = await pool.query(
+            "SELECT DISTINCT whatsapp_id FROM pedidos WHERE whatsapp_id IS NOT NULL"
+        );
+
+        const numerosUnicos = resPedidos.rows.map(row => row.whatsapp_id);
+
+        if (numerosUnicos.length === 0) {
+            return res.status(404).json({ error: 'No hay clientes registrados.' });
+        }
+
+        // B. Preparamos credenciales de Meta
+        const token = process.env.WHATSAPP_TOKEN;
+        const phoneId = process.env.PHONE_NUMBER_ID; 
+
+        let enviados = 0;
+        let fallidos = 0;
+
+        // C. Bucle: Disparamos la plantilla a cada número
+        for (const numero of numerosUnicos) {
+            try {
+                await axios.post(
+                    `https://graph.facebook.com/v17.0/${phoneId}/messages`,
+                    {
+                        messaging_product: 'whatsapp',
+                        to: numero,
+                        type: 'template',
+                        template: {
+                            name: templateName,
+                            language: { code: 'es_AR' } // Ajustar si Meta lo aprobó como 'es'
+                        }
+                    },
+                    {
+                        headers: { Authorization: `Bearer ${token}` }
+                    }
+                );
+                enviados++;
+            } catch (err) {
+                console.error(`Error enviando a ${numero}:`, err.response?.data || err.message);
+                fallidos++;
+            }
+        }
+
+        // D. Devolvemos el reporte a tu panel Vercel
+        res.json({ 
+            mensaje: 'Difusión finalizada con éxito', 
+            total_clientes: numerosUnicos.length,
+            enviados: enviados, 
+            fallidos: fallidos 
+        });
+
+    } catch (error) {
+        console.error('❌ Error en difusión masiva:', error);
+        res.status(500).json({ error: 'Hubo un error en el servidor.' });
     }
 });
 
