@@ -142,7 +142,7 @@ app.post('/api/difusion', async (req, res) => {
                     type: 'template',
                     template: {
                         name: templateName,
-                        language: { code: 'es' } // Código oficial para Español genérico
+                        language: { code: 'es_AR' } // Código oficial para Español genérico
                     }
                 };
 
