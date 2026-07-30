@@ -55,6 +55,7 @@ export default function DetallePedido() {
       {/* Le sacamos el fondo y los bordes para que sea texto limpio */}
       <div style={{ marginBottom: '20px' }}>
         <p style={{ margin: '5px 0' }}><strong>Teléfono del cliente:</strong> +{pedido.whatsapp_id}</p>
+        <p style={{ margin: '5px 0' }}><strong>Dirección de entrega:</strong> {pedido.direccion || 'No especificada'}</p>
         <p style={{ margin: '5px 0' }}><strong>Estado actual:</strong> {pedido.estado}</p>
         <p style={{ margin: '5px 0' }}><strong>Total abonado:</strong> ${pedido.total_compra}</p>
       </div>

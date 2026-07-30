@@ -3,16 +3,15 @@ const axios = require('axios');
 const { enviarMensaje } = require('../services/whatsapp');
 const { pool } = require('../services/db'); 
 
-// Importamos el SDK moderno de Mercado Pago
 const { MercadoPagoConfig, Preference } = require('mercadopago');
 const client = new MercadoPagoConfig({ accessToken: process.env.MP_ACCESS_TOKEN });
 const preferenceClient = new Preference(client);
 
-// Memorias temporales para guiar el flujo del cliente
+// Añadimos una nueva memoria temporal para la dirección
+const pedidosEsperandoDireccion = new Map(); 
 const pedidosEsperandoTurno = new Map();
 const pedidosEsperandoPago = new Map();
 
-// Definimos el costo fijo de envío
 const COSTO_ENVIO = 4000;
 
 const verificarToken = (req, res) => {
@@ -35,8 +34,44 @@ const recibirMensaje = async (req, res) => {
 
         let numeroCliente = message.from.startsWith("549") ? message.from.replace("549", "54") : message.from;
 
-        // 1. BIENVENIDA
+        // 1. MANEJO DE MENSAJES DE TEXTO (Bienvenida o Dirección)
         if (message.type === 'text') {
+            const textoRecibido = message.text.body;
+
+            // ¿El bot estaba esperando que este cliente le pase su dirección?
+            if (pedidosEsperandoDireccion.has(numeroCliente)) {
+                // Sacamos los datos que guardamos temporalmente
+                const datosPedido = pedidosEsperandoDireccion.get(numeroCliente);
+                
+                // Guardamos la dirección en la base de datos
+                await pool.query('UPDATE pedidos SET direccion = $1 WHERE id_pedido = $2', [textoRecibido, datosPedido.idPedido]);
+
+                // Lo sacamos de la memoria de dirección y lo pasamos a la de turno
+                pedidosEsperandoDireccion.delete(numeroCliente);
+                pedidosEsperandoTurno.set(numeroCliente, datosPedido.idPedido);
+
+                // Recién ahora le mandamos los botones del turno con los precios que traemos de la memoria
+                const dataBotonesTurno = {
+                    messaging_product: "whatsapp",
+                    to: numeroCliente,
+                    type: "interactive",
+                    interactive: {
+                        type: "button",
+                        body: { text: `📍 ¡Dirección guardada!\n\nSubtotal: $${datosPedido.subtotal}\nEnvío: $${COSTO_ENVIO}\n*Total a abonar: $${datosPedido.total}*\n\n¿En qué turno preferís la entrega?` },
+                        action: {
+                            buttons: [
+                                { type: "reply", reply: { id: "entrega_manana", title: "☀️ Por la Mañana" } },
+                                { type: "reply", reply: { id: "entrega_tarde", title: "🌙 Por la Tarde" } }
+                            ]
+                        }
+                    }
+                };
+                await axios.post(`https://graph.facebook.com/v17.0/${process.env.WHATSAPP_PHONE_ID}/messages`, dataBotonesTurno, { headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` } });
+                
+                return res.sendStatus(200); // Cortamos acá para que no mande la bienvenida
+            }
+
+            // Si no estaba esperando dirección, es un mensaje común (Bienvenida)
             const mensajeBienvenida = 
                 "¡Hola! 👋 Bienvenido a Supercompra.\n\n" +
                 "Para ver nuestros productos, tocá el ícono de la tiendita (🏠) que aparece arriba a la derecha. " +
@@ -75,7 +110,6 @@ const recibirMensaje = async (req, res) => {
                     return res.sendStatus(200);
                 }
 
-                // Sumamos el costo de envío al subtotal de los productos
                 const totalCarrito = subtotal + COSTO_ENVIO;
 
                 const resPedido = await pool.query(
@@ -91,26 +125,14 @@ const recibirMensaje = async (req, res) => {
                     );
                 }
 
-                // Guardamos en memoria para el paso del turno
-                pedidosEsperandoTurno.set(numeroCliente, idNuevoPedido);
+                // NUEVO PASO: En vez de pedir el turno, guardamos todo en memoria y pedimos la dirección
+                pedidosEsperandoDireccion.set(numeroCliente, { 
+                    idPedido: idNuevoPedido, 
+                    subtotal: subtotal, 
+                    total: totalCarrito 
+                });
 
-                // Botones de Turno con el desglose de precios
-                const dataBotonesTurno = {
-                    messaging_product: "whatsapp",
-                    to: numeroCliente,
-                    type: "interactive",
-                    interactive: {
-                        type: "button",
-                        body: { text: `🛒 ¡Recibimos tu pedido!\n\nSubtotal: $${subtotal}\nEnvío: $${COSTO_ENVIO}\n*Total a abonar: $${totalCarrito}*\n\n¿En qué turno preferís la entrega?` },
-                        action: {
-                            buttons: [
-                                { type: "reply", reply: { id: "entrega_manana", title: "☀️ Por la Mañana" } },
-                                { type: "reply", reply: { id: "entrega_tarde", title: "🌙 Por la Tarde" } }
-                            ]
-                        }
-                    }
-                };
-                await axios.post(`https://graph.facebook.com/v17.0/${process.env.WHATSAPP_PHONE_ID}/messages`, dataBotonesTurno, { headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` } });
+                await enviarMensaje(numeroCliente, "🛒 ¡Recibimos tu pedido y ya lo estamos procesando!\n\nPor favor, *escribinos la dirección* a donde querés que lo enviemos (Calle y número).");
 
             } catch (errorBD) {
                 console.error("❌ Error BD Carrito:", errorBD);
@@ -130,18 +152,16 @@ const recibirMensaje = async (req, res) => {
                 let nuevoEstado = opcion === 'entrega_manana' ? 'Pendiente - Mañana' : 'Pendiente - Tarde';
                 await pool.query('UPDATE pedidos SET estado = $1 WHERE id_pedido = $2', [nuevoEstado, idPedidoAsociado]);
 
-                // Pasamos el pedido a la memoria de espera de pago
                 pedidosEsperandoTurno.delete(numeroCliente);
                 pedidosEsperandoPago.set(numeroCliente, idPedidoAsociado);
 
-                // Mandamos botones de método de pago
                 const dataBotonesPago = {
                     messaging_product: "whatsapp",
                     to: numeroCliente,
                     type: "interactive",
                     interactive: {
                         type: "button",
-                        body: { text: "Perfecto turno agendado. ¿Cómo preferís realizar el pago?" },
+                        body: { text: "Perfecto, turno agendado. ¿Cómo preferís realizar el pago?" },
                         action: {
                             buttons: [
                                 { type: "reply", reply: { id: "pago_mp", title: "💳 Mercado Pago" } },
@@ -158,7 +178,6 @@ const recibirMensaje = async (req, res) => {
                 const idPedidoAsociado = pedidosEsperandoPago.get(numeroCliente);
                 if (!idPedidoAsociado) return await enviarMensaje(numeroCliente, "Hubo un problema con tu sesión de pago.");
 
-                // Buscamos el monto total del pedido para procesar el pago correctamente
                 const resPedido = await pool.query('SELECT total_compra FROM pedidos WHERE id_pedido = $1', [idPedidoAsociado]);
                 const totalCompra = resPedido.rows[0].total_compra;
 
