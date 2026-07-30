@@ -2,19 +2,19 @@ require('dotenv').config();
 const axios = require('axios');
 const { enviarMensaje } = require('../services/whatsapp');
 const { pool } = require('../services/db'); 
-const Tesseract = require('tesseract.js'); // Importamos la IA
+const Tesseract = require('tesseract.js'); 
 
 const { MercadoPagoConfig, Preference } = require('mercadopago');
 const client = new MercadoPagoConfig({ accessToken: process.env.MP_ACCESS_TOKEN });
 const preferenceClient = new Preference(client);
 
-// Memorias temporales
 const pedidosEsperandoDireccion = new Map(); 
 const pedidosEsperandoTurno = new Map();
 const pedidosEsperandoPago = new Map();
-const pedidosEsperandoComprobante = new Map(); // NUEVA: Espera la foto del pago
+const pedidosEsperandoComprobante = new Map(); 
 
 const COSTO_ENVIO = 4000;
+const COSTO_FULL = 1000; // Agregamos la variable de tu costo ficticio
 
 const verificarToken = (req, res) => {
     const verify_token = process.env.WHATSAPP_VERIFY_TOKEN;
@@ -47,17 +47,19 @@ const recibirMensaje = async (req, res) => {
                 pedidosEsperandoDireccion.delete(numeroCliente);
                 pedidosEsperandoTurno.set(numeroCliente, datosPedido.idPedido);
 
+                // ACÁ ESTÁ EL CAMBIO: Sumamos el 3er botón de Envío Full
                 const dataBotonesTurno = {
                     messaging_product: "whatsapp",
                     to: numeroCliente,
                     type: "interactive",
                     interactive: {
                         type: "button",
-                        body: { text: `📍 ¡Dirección guardada!\n\nSubtotal: $${datosPedido.subtotal}\nEnvío: $${COSTO_ENVIO}\n*Total a abonar: $${datosPedido.total}*\n\n¿En qué turno preferís la entrega?` },
+                        body: { text: `📍 ¡Dirección guardada!\n\nSubtotal: $${datosPedido.subtotal}\nEnvío estándar: $${COSTO_ENVIO}\n*Total a abonar: $${datosPedido.total}*\n\n¿En qué turno preferís la entrega?` },
                         action: {
                             buttons: [
-                                { type: "reply", reply: { id: "entrega_manana", title: "☀️ Por la Mañana" } },
-                                { type: "reply", reply: { id: "entrega_tarde", title: "🌙 Por la Tarde" } }
+                                { type: "reply", reply: { id: "entrega_manana", title: "☀️ Mañana" } },
+                                { type: "reply", reply: { id: "entrega_tarde", title: "🌙 Tarde" } },
+                                { type: "reply", reply: { id: "envio_full", title: "🚀 Full (+$1000)" } }
                             ]
                         }
                     }
@@ -73,43 +75,34 @@ const recibirMensaje = async (req, res) => {
             await enviarMensaje(numeroCliente, mensajeBienvenida);
         }
 
-        // 2. MANEJO DE IMÁGENES (Reconocimiento OCR para Comprobantes)
+        // 2. MANEJO DE IMÁGENES (OCR)
         if (message.type === 'image') {
             if (pedidosEsperandoComprobante.has(numeroCliente)) {
                 const datosPago = pedidosEsperandoComprobante.get(numeroCliente);
                 await enviarMensaje(numeroCliente, "📸 Comprobante recibido. Estoy analizando la imagen con Inteligencia Artificial para verificar el pago, dame un momento...");
 
                 try {
-                    // A. Obtenemos la URL temporal de la imagen desde los servidores de Meta
                     const imageId = message.image.id;
                     const resMedia = await axios.get(`https://graph.facebook.com/v17.0/${imageId}`, { 
                         headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` } 
                     });
                     
-                    // B. Descargamos el archivo binario
                     const responseDescarga = await axios.get(resMedia.data.url, { 
                         responseType: 'arraybuffer', 
                         headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` } 
                     });
                     const imageBuffer = Buffer.from(responseDescarga.data, 'binary');
 
-                    // C. Usamos Tesseract para extraer el texto de la imagen (en español)
                     const { data: { text } } = await Tesseract.recognize(imageBuffer, 'spa');
-                    console.log("Texto extraído del comprobante:", text);
-
-                    // D. Buscamos si el monto exacto aparece en el texto
                     const montoString = String(datosPago.totalEsperado);
                     
-                    // Verificamos el monto (buscamos el número con o sin símbolos)
                     if (text.includes(montoString)) {
-                        // ¡ÉXITO! La IA encontró el monto. Aprobamos el pedido automáticamente.
                         await pool.query('UPDATE pagos SET estado = $1 WHERE id_pedido = $2', ['Aprobado', datosPago.idPedido]);
                         await pool.query('UPDATE pedidos SET estado = $1 WHERE id_pedido = $2', ['En Preparación', datosPago.idPedido]);
                         
                         pedidosEsperandoComprobante.delete(numeroCliente);
                         await enviarMensaje(numeroCliente, `✅ ¡Pago validado automáticamente con éxito!\n\nEl importe de *$${montoString}* fue confirmado. Tu pedido ya pasó al área de preparación para ser despachado.`);
                     } else {
-                        // Falló la validación automática, requiere revisión del dueño en Vercel
                         await enviarMensaje(numeroCliente, `⚠️ No pude validar el monto exacto de *$${montoString}* en la foto del comprobante.\n\nNo te preocupes, un asesor lo revisará manualmente desde el sistema en los próximos minutos para confirmar tu pedido.`);
                         pedidosEsperandoComprobante.delete(numeroCliente);
                     }
@@ -171,12 +164,33 @@ const recibirMensaje = async (req, res) => {
         if (message.type === 'interactive') {
             let opcion = message.interactive.type === 'button_reply' ? message.interactive.button_reply.id : message.interactive.list_reply.id;
 
-            if (opcion === 'entrega_manana' || opcion === 'entrega_tarde') {
+            // ACÁ ESTÁ EL CAMBIO DE LÓGICA Y PRECIO
+            if (opcion === 'entrega_manana' || opcion === 'entrega_tarde' || opcion === 'envio_full') {
                 const idPedidoAsociado = pedidosEsperandoTurno.get(numeroCliente);
                 if (!idPedidoAsociado) return await enviarMensaje(numeroCliente, "La sesión expiró, por favor reenviá tu carrito.");
 
-                let nuevoEstado = opcion === 'entrega_manana' ? 'Pendiente - Mañana' : 'Pendiente - Tarde';
-                await pool.query('UPDATE pedidos SET estado = $1 WHERE id_pedido = $2', [nuevoEstado, idPedidoAsociado]);
+                let nuevoEstado = '';
+                let recargoExtra = 0;
+
+                if (opcion === 'entrega_manana') {
+                    nuevoEstado = 'Pendiente - Mañana';
+                } else if (opcion === 'entrega_tarde') {
+                    nuevoEstado = 'Pendiente - Tarde';
+                } else if (opcion === 'envio_full') {
+                    nuevoEstado = 'Pendiente - Full';
+                    recargoExtra = COSTO_FULL; // Aplicamos los $1000 extra
+                }
+
+                // Si hay recargo, actualizamos el estado Y sumamos el precio en la base de datos
+                if (recargoExtra > 0) {
+                    await pool.query('UPDATE pedidos SET estado = $1, total_compra = total_compra + $2 WHERE id_pedido = $3', [nuevoEstado, recargoExtra, idPedidoAsociado]);
+                } else {
+                    await pool.query('UPDATE pedidos SET estado = $1 WHERE id_pedido = $2', [nuevoEstado, idPedidoAsociado]);
+                }
+
+                // Traemos el total final (ya actualizado si fue full) para mostrarlo en el texto
+                const resTotal = await pool.query('SELECT total_compra FROM pedidos WHERE id_pedido = $1', [idPedidoAsociado]);
+                const totalActualizado = resTotal.rows[0].total_compra;
 
                 pedidosEsperandoTurno.delete(numeroCliente);
                 pedidosEsperandoPago.set(numeroCliente, idPedidoAsociado);
@@ -188,7 +202,7 @@ const recibirMensaje = async (req, res) => {
                     interactive: {
                         type: "list",
                         header: { type: "text", text: "💳 Métodos de Pago" },
-                        body: { text: "Perfecto, turno agendado. Por favor elegí cómo preferís abonar tu pedido:" },
+                        body: { text: `Turno agendado. El total de tu pedido es *$${totalActualizado}*.\n\nPor favor elegí cómo preferís abonarlo:` },
                         footer: { text: "Supercompra" },
                         action: {
                             button: "Elegir pago",
@@ -209,6 +223,7 @@ const recibirMensaje = async (req, res) => {
                 await axios.post(`https://graph.facebook.com/v17.0/${process.env.WHATSAPP_PHONE_ID}/messages`, dataMenuPago, { headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` } });
             }
 
+            // (El bloque de pagos sigue igual, validando el total desde la base de datos)
             if (opcion === 'pago_mp' || opcion === 'pago_transferencia' || opcion === 'pago_cuenta_dni' || opcion === 'pago_cuenta') {
                 const idPedidoAsociado = pedidosEsperandoPago.get(numeroCliente);
                 if (!idPedidoAsociado) return await enviarMensaje(numeroCliente, "Hubo un problema con tu sesión de pago.");
@@ -225,7 +240,6 @@ const recibirMensaje = async (req, res) => {
                     );
                     pedidosEsperandoPago.delete(numeroCliente);
                     
-                    // PASO MAGICO: Lo guardamos en la memoria esperando la foto del comprobante
                     pedidosEsperandoComprobante.set(numeroCliente, { idPedido: idPedidoAsociado, totalEsperado: totalCompra });
                     
                     await enviarMensaje(numeroCliente, `🏦 Elegiste abonar con ${nombreMetodo}.\n\nEl total a transferir es *$${totalCompra}*.\n\n*Datos bancarios:*\nAlias: *super.compra.ok*\nCBU/CVU: 0000000000000000000000\n\nPor favor, *envianos la foto del comprobante* por este mismo chat para validarlo automáticamente.`);
