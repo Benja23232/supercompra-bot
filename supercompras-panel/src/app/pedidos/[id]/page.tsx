@@ -12,7 +12,7 @@ export default function DetallePedido() {
   const [detalles, setDetalles] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // NUEVO: Memoria para guardar qué productos ya se agarraron de la estantería
+  // Memoria para guardar qué productos ya se agarraron de la estantería
   const [productosMarcados, setProductosMarcados] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
@@ -49,6 +49,7 @@ export default function DetallePedido() {
   if (loading) return <p className="texto-cargando">Cargando detalles del pedido...</p>;
   if (!pedido) return <p className="texto-cargando">No se encontró el pedido.</p>;
 
+  // Función para determinar el estilo de la insignia según el tipo de envío
   const obtenerBadgeEnvio = (estado: string) => {
     if (estado?.includes('Full')) {
       return { texto: '🚀 ENVÍO FULL', fondo: '#f3e8ff', color: '#7e22ce', borde: '#d8b4fe' };
@@ -74,6 +75,7 @@ export default function DetallePedido() {
       <div className="encabezado-pagina" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <h1 className="titulo-pagina" style={{ fontSize: '1.8rem' }}>Pedido #{String(pedido.id_pedido).slice(0, 8)}</h1>
         
+        {/* Insignia visual del tipo de envío */}
         <span style={{ 
           backgroundColor: badge.fondo, 
           color: badge.color, 
@@ -107,7 +109,6 @@ export default function DetallePedido() {
         <table className="tabla-datos" style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
-              {/* Nueva columna para el Check */}
               <th className="texto-centro" style={{ textAlign: 'center', padding: '10px', width: '60px' }}>Listo</th>
               <th className="texto-izq" style={{ textAlign: 'left', padding: '10px' }}>Código / ID Producto</th>
               <th className="texto-centro" style={{ textAlign: 'center', padding: '10px' }}>Cantidad</th>
@@ -121,7 +122,6 @@ export default function DetallePedido() {
               return (
                 <tr 
                   key={index} 
-                  // Si está marcado, le bajamos la opacidad y cambiamos el fondo para que "desaparezca" visualmente
                   style={{ 
                     borderBottom: '1px solid #f3f4f6',
                     backgroundColor: estaMarcado ? '#f3f4f6' : '#fff',
@@ -137,14 +137,13 @@ export default function DetallePedido() {
                       style={{ width: '22px', height: '22px', cursor: 'pointer' }}
                     />
                   </td>
-                  {/* Si está marcado, tachamos el texto */}
-                  <td className="font-fuerte" style={{ padding: '10px', textDecoration: estaMarcado ? 'line-through' : 'none' }}>
+                  <td className="font-fuerte" style={{ padding: '10px', textDecoration: estaMarcado ? 'line-through' : 'none', color: '#000' }}>
                     {item.id_producto}
                   </td>
-                  <td className="texto-centro" style={{ textAlign: 'center', padding: '10px', textDecoration: estaMarcado ? 'line-through' : 'none' }}>
+                  <td className="texto-centro" style={{ textAlign: 'center', padding: '10px', textDecoration: estaMarcado ? 'line-through' : 'none', color: '#000' }}>
                     <strong style={{ fontSize: '1.1rem' }}>{item.cantidad}</strong>
                   </td>
-                  <td className="texto-centro" style={{ textAlign: 'center', padding: '10px', textDecoration: estaMarcado ? 'line-through' : 'none' }}>
+                  <td className="texto-centro" style={{ textAlign: 'center', padding: '10px', textDecoration: estaMarcado ? 'line-through' : 'none', color: '#000' }}>
                     ${item.precio_congelado}
                   </td>
                 </tr>
