@@ -36,15 +36,16 @@ export default function Login() {
       .eq('email', email)
       .single();
 
-    // 3. Guardamos el rol en la memoria del navegador para usarlo después
-    if (roleData) {
-      localStorage.setItem('rolUsuario', roleData.rol);
-    } else {
-      localStorage.setItem('rolUsuario', 'usuario'); // Por seguridad, si no lo encuentra, lo trata como empleado común
-    }
+    // 3. Determinamos el rol (por defecto 'usuario' si no se encuentra)
+    const rolObtenido = roleData ? roleData.rol : 'usuario';
+    localStorage.setItem('rolUsuario', rolObtenido);
 
-    // 4. Lo redirigimos directo al panel de pedidos
-    router.push('/pedidos'); 
+    // 4. Redirección inteligente basada en el rol
+    if (rolObtenido === 'admin') {
+      router.push('/dashboard'); // El administrador va al menú principal con tarjetas
+    } else {
+      router.push('/pedidos');   // El empleado va directo a la gestión de pedidos
+    }
   };
 
   return (
