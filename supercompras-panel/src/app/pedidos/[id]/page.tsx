@@ -75,7 +75,7 @@ export default function DetallePedido() {
         </span>
       </div>
 
-      <div style={{ marginBottom: '20px', background: '#f9fafb', padding: '15px', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
+      <div style={{ marginBottom: '20px', background: '#0e0f10', padding: '15px', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
         <p style={{ margin: '5px 0' }}><strong>Teléfono del cliente:</strong> +{pedido.whatsapp_id}</p>
         <p style={{ margin: '5px 0' }}><strong>Dirección de entrega:</strong> {pedido.direccion || 'No especificada'}</p>
         <p style={{ margin: '5px 0' }}><strong>Estado actual:</strong> {pedido.estado}</p>
