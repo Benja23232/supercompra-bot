@@ -36,14 +36,23 @@ export default function Login() {
       .eq('email', email)
       .single();
 
+    // --- DEPURACIÓN (Abrí la consola con F12 en tu navegador para ver esto) ---
+    console.log("Correo ingresado:", email);
+    console.log("Resultado de Supabase en roles:", roleData);
+    console.log("Error de roles (si hay):", roleError);
+
     // 3. Determinamos el rol (por defecto 'usuario' si no se encuentra)
     const rolObtenido = roleData ? roleData.rol : 'usuario';
+    console.log("Rol definido final:", rolObtenido);
+
     localStorage.setItem('rolUsuario', rolObtenido);
 
     // 4. Redirección inteligente basada en el rol
     if (rolObtenido === 'admin') {
+      console.log("Redirigiendo a /dashboard...");
       router.push('/dashboard'); // El administrador va al menú principal con tarjetas
     } else {
+      console.log("Redirigiendo a /pedidos...");
       router.push('/pedidos');   // El empleado va directo a la gestión de pedidos
     }
   };
