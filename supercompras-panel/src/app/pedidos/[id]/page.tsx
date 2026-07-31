@@ -25,9 +25,15 @@ export default function DetallePedido() {
 
       if (dataPedido) setPedido(dataPedido);
 
+      // ACÁ ESTÁ LA MAGIA: Le pedimos a Supabase que traiga la columna "nombre" de la tabla "productos"
       const { data: dataDetalles, error: errorDetalles } = await supabase
         .from('detalle_pedidos')
-        .select('cantidad, precio_congelado, id_producto')
+        .select(`
+          cantidad, 
+          precio_congelado, 
+          id_producto,
+          productos (nombre)
+        `)
         .eq('id_pedido', id);
 
       if (dataDetalles) setDetalles(dataDetalles);
@@ -89,7 +95,7 @@ export default function DetallePedido() {
         </span>
       </div>
 
-      <div style={{ marginBottom: '20px', background: '#09090a', padding: '15px', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
+      <div style={{ marginBottom: '20px', background: '#f9fafb', padding: '15px', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
         <p style={{ margin: '5px 0' }}><strong>Teléfono del cliente:</strong> +{pedido.whatsapp_id}</p>
         <p style={{ margin: '5px 0' }}><strong>Dirección de entrega:</strong> {pedido.direccion || 'No especificada'}</p>
         <p style={{ margin: '5px 0' }}><strong>Estado actual:</strong> {pedido.estado}</p>
@@ -110,7 +116,7 @@ export default function DetallePedido() {
           <thead>
             <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
               <th className="texto-centro" style={{ textAlign: 'center', padding: '10px', width: '60px' }}>Listo</th>
-              <th className="texto-izq" style={{ textAlign: 'left', padding: '10px' }}>Código / ID Producto</th>
+              <th className="texto-izq" style={{ textAlign: 'left', padding: '10px' }}>Producto</th>
               <th className="texto-centro" style={{ textAlign: 'center', padding: '10px' }}>Cantidad</th>
               <th className="texto-centro" style={{ textAlign: 'center', padding: '10px' }}>Precio</th>
             </tr>
@@ -137,8 +143,9 @@ export default function DetallePedido() {
                       style={{ width: '22px', height: '22px', cursor: 'pointer' }}
                     />
                   </td>
+                  {/* ACÁ MOSTRAMOS EL NOMBRE EN LUGAR DEL ID */}
                   <td className="font-fuerte" style={{ padding: '10px', textDecoration: estaMarcado ? 'line-through' : 'none', color: '#000' }}>
-                    {item.id_producto}
+                    {item.productos?.nombre || 'Producto desconocido'}
                   </td>
                   <td className="texto-centro" style={{ textAlign: 'center', padding: '10px', textDecoration: estaMarcado ? 'line-through' : 'none', color: '#000' }}>
                     <strong style={{ fontSize: '1.1rem' }}>{item.cantidad}</strong>
