@@ -2,9 +2,14 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
 export default function Pedidos() {
+  const router = useRouter();
+  const [autorizado, setAutorizado] = useState(false);
+  const [rolActivo, setRolActivo] = useState('');
+
   const [pedidos, setPedidos] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   
@@ -24,10 +29,26 @@ export default function Pedidos() {
   }
 
   useEffect(() => {
-    fetchPedidos();
-  }, []);
+    // 1. Buscamos la credencial en la memoria
+    const rol = localStorage.getItem('rolUsuario');
+
+    // 2. Tomamos decisiones de seguridad
+    if (!rol) {
+      router.push('/'); // No logueado -> Login
+    } else {
+      setRolActivo(rol); // Guardamos el rol para saber qué botones mostrar
+      setAutorizado(true); // Dejamos pasar a ambos (admin y empleado)
+      fetchPedidos();
+    }
+  }, [router]);
 
   const cambiarEstado = async (id: any, nuevoEstado: string) => {
+    // Seguridad extra: Si un empleado intenta hackear y ejecutar esto, lo bloqueamos
+    if (rolActivo !== 'admin') {
+      alert('No tenés permisos para cambiar el estado del pedido.');
+      return;
+    }
+
     const { error } = await supabase
       .from('pedidos')
       .update({ estado: nuevoEstado })
@@ -41,6 +62,11 @@ export default function Pedidos() {
     }
   };
 
+  const cerrarSesion = () => {
+    localStorage.removeItem('rolUsuario');
+    router.push('/');
+  };
+
   // Lógica para filtrar los pedidos según el botón que elija el comerciante
   const pedidosFiltrados = pedidos.filter((pedido) => {
     if (filtro === 'todos') return true;
@@ -50,18 +76,40 @@ export default function Pedidos() {
     return true;
   });
 
+  // Pantalla de espera mientras verifica
+  if (!autorizado) {
+    return (
+      <main style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', backgroundColor: '#f3f4f6' }}>
+        <p style={{ fontSize: '1.2rem', color: '#6b7280', fontWeight: 'bold' }}>Verificando accesos...</p>
+      </main>
+    );
+  }
+
   return (
     <main className="contenedor-pagina" style={{ maxWidth: '1000px', margin: '0 auto', padding: '20px' }}>
       
-      <Link href="/" className="link-volver" style={{ display: 'inline-block', marginBottom: '15px', color: '#2563eb', textDecoration: 'none' }}>
-        🔙 Volver al panel principal
-      </Link>
+      {/* Botón superior dinámico según el rol */}
+      {rolActivo === 'admin' ? (
+        <Link href="/dashboard" className="link-volver" style={{ display: 'inline-block', marginBottom: '15px', color: '#2563eb', textDecoration: 'none' }}>
+          🔙 Volver al panel principal
+        </Link>
+      ) : (
+        <button onClick={cerrarSesion} className="link-volver" style={{ display: 'inline-block', marginBottom: '15px', color: '#dc2626', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: '1rem', fontWeight: 'bold' }}>
+          🔒 Cerrar Sesión
+        </button>
+      )}
 
       <div className="encabezado-pagina" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <h1 className="titulo-pagina" style={{ fontSize: '1.8rem' }}>🛒 Gestión de Pedidos</h1>
-        <button onClick={fetchPedidos} className="btn btn-secundario" style={{ padding: '0.5rem 1rem', cursor: 'pointer' }}>
-          🔄 Actualizar
-        </button>
+        <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
+          {/* Indicador visual de qué cuenta está usando */}
+          <span style={{ fontSize: '0.9rem', color: '#6b7280', fontWeight: 'bold' }}>
+            👤 Modo: {rolActivo === 'admin' ? 'Administrador' : 'Empleado'}
+          </span>
+          <button onClick={fetchPedidos} className="btn btn-secundario" style={{ padding: '0.5rem 1rem', cursor: 'pointer' }}>
+            🔄 Actualizar
+          </button>
+        </div>
       </div>
 
       {/* PESTAÑAS DE FILTRADO (Organización de recorridos) */}
@@ -94,7 +142,7 @@ export default function Pedidos() {
       
       {loading ? (
         <p className="texto-cargando">Cargando ventas...</p>
-      ​) : pedidosFiltrados.length === 0 ? (
+      ) : pedidosFiltrados.length === 0 ? (
         <p className="texto-cargando" style={{ padding: '2rem', textAlign: 'center', background: '#f9fafb', borderRadius: '8px' }}>No hay pedidos en esta categoría.</p>
       ) : (
         <div className="contenedor-tabla">
@@ -119,19 +167,26 @@ export default function Pedidos() {
                   </td>
                   
                   <td className="texto-centro" style={{ textAlign: 'center', padding: '12px' }}>
-                    <select
-                      value={pedido.estado || 'Pendiente'}
-                      onChange={(e) => cambiarEstado(pedido.id_pedido, e.target.value)}
-                      style={{ width: '170px', padding: '0.4rem', borderRadius: '4px', border: '1px solid #ccc', cursor: 'pointer', backgroundColor: '#fff' }}
-                    >
-                      <option value="Pendiente">Pendiente</option>
-                      <option value="Pendiente - Mañana">Pendiente - Mañana</option>
-                      <option value="Pendiente - Tarde">Pendiente - Tarde</option>
-                      <option value="Pendiente - Full">🚀 Pendiente - Full</option>
-                      <option value="En Proceso">En Proceso</option>
-                      <option value="Entregado">Entregado</option>
-                      <option value="Cancelado">Cancelado</option>
-                    </select>
+                    {/* Renderizado condicional según el rol */}
+                    {rolActivo === 'admin' ? (
+                      <select
+                        value={pedido.estado || 'Pendiente'}
+                        onChange={(e) => cambiarEstado(pedido.id_pedido, e.target.value)}
+                        style={{ width: '170px', padding: '0.4rem', borderRadius: '4px', border: '1px solid #ccc', cursor: 'pointer', backgroundColor: '#fff' }}
+                      >
+                        <option value="Pendiente">Pendiente</option>
+                        <option value="Pendiente - Mañana">Pendiente - Mañana</option>
+                        <option value="Pendiente - Tarde">Pendiente - Tarde</option>
+                        <option value="Pendiente - Full">🚀 Pendiente - Full</option>
+                        <option value="En Proceso">En Proceso</option>
+                        <option value="Entregado">Entregado</option>
+                        <option value="Cancelado">Cancelado</option>
+                      </select>
+                    ) : (
+                      <span style={{ padding: '0.4rem 0.8rem', background: '#f3f4f6', borderRadius: '4px', display: 'inline-block', fontWeight: 'bold' }}>
+                        {pedido.estado || 'Pendiente'}
+                      </span>
+                    )}
                   </td>
 
                   <td className="texto-centro" style={{ textAlign: 'center', padding: '12px' }}>

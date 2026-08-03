@@ -1,12 +1,16 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
 // ⚠️ REEMPLAZÁ ESTO POR LA URL REAL DE TU SERVIDOR EN RENDER ⚠️
 const URL_BACKEND = 'https://supercompra-bot-backend.onrender.com';
 
 export default function Difusiones() {
+  const router = useRouter();
+  const [autorizado, setAutorizado] = useState(false);
+
   const [templateName, setTemplateName] = useState('promo_dinamica');
   
   // Estado para guardar la lista de productos que viene de la base de datos
@@ -20,22 +24,35 @@ export default function Difusiones() {
   const [loading, setLoading] = useState(false);
   const [resultado, setResultado] = useState<any>(null);
 
-  // Cuando la página carga, vamos a buscar los productos al backend
+  // Verificamos seguridad y luego cargamos los productos
   useEffect(() => {
-    const cargarProductos = async () => {
-      try {
-        const res = await fetch(`${URL_BACKEND}/api/productos`);
-        const data = await res.json();
-        if (res.ok) {
-          setListaProductos(data);
+    // 1. Buscamos la credencial en la memoria
+    const rol = localStorage.getItem('rolUsuario');
+
+    // 2. Tomamos decisiones de seguridad
+    if (!rol) {
+      router.push('/'); // No logueado -> Login
+    } else if (rol !== 'admin') {
+      router.push('/pedidos'); // Empleado -> Solo pedidos
+    } else {
+      setAutorizado(true); // Admin -> Permitido
+      
+      // 3. Como es admin, cargamos los productos
+      const cargarProductos = async () => {
+        try {
+          const res = await fetch(`${URL_BACKEND}/api/productos`);
+          const data = await res.json();
+          if (res.ok) {
+            setListaProductos(data);
+          }
+        } catch (error) {
+          console.error("Error cargando productos:", error);
         }
-      } catch (error) {
-        console.error("Error cargando productos:", error);
-      }
-    };
-    
-    cargarProductos();
-  }, []);
+      };
+      
+      cargarProductos();
+    }
+  }, [router]);
 
   const enviarDifusion = async () => {
     if (!templateName.trim() || !prod1 || !prod2 || !precio.trim() || !linkCatalogo.trim()) {
@@ -85,9 +102,20 @@ export default function Difusiones() {
     }
   };
 
+  // Pantalla de espera mientras verifica
+  if (!autorizado) {
+    return (
+      <main style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', backgroundColor: '#f3f4f6' }}>
+        <p style={{ fontSize: '1.2rem', color: '#6b7280', fontWeight: 'bold' }}>Verificando accesos...</p>
+      </main>
+    );
+  }
+
   return (
     <main className="contenedor-pagina" style={{ maxWidth: '800px', margin: '0 auto', padding: '20px' }}>
-      <Link href="/" className="link-volver" style={{ display: 'inline-block', marginBottom: '20px', color: '#2563eb', textDecoration: 'none' }}>
+      
+      {/* Actualizado para volver al dashboard y no al login */}
+      <Link href="/dashboard" className="link-volver" style={{ display: 'inline-block', marginBottom: '20px', color: '#2563eb', textDecoration: 'none' }}>
         🔙 Volver al panel principal
       </Link>
 

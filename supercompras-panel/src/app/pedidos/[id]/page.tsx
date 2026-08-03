@@ -3,10 +3,12 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
-import { useParams } from 'next/navigation'; 
+import { useParams, useRouter } from 'next/navigation'; 
 
 export default function DetallePedido() {
   const { id } = useParams(); 
+  const router = useRouter();
+  const [autorizado, setAutorizado] = useState(false);
   
   const [pedido, setPedido] = useState<any>(null);
   const [detalles, setDetalles] = useState<any[]>([]);
@@ -15,6 +17,17 @@ export default function DetallePedido() {
   // Memoria para guardar qué productos ya se agarraron de la estantería
   const [productosMarcados, setProductosMarcados] = useState<Record<string, boolean>>({});
 
+  // 1. Efecto de Seguridad
+  useEffect(() => {
+    const rol = localStorage.getItem('rolUsuario');
+    if (!rol) {
+      router.push('/'); // Si no hay sesión, al login
+    } else {
+      setAutorizado(true); // Dejamos pasar tanto a admin como a empleados
+    }
+  }, [router]);
+
+  // 2. Efecto de Carga de Datos
   useEffect(() => {
     async function fetchDetalleCompleto() {
       const { data: dataPedido, error: errorPedido } = await supabase
@@ -41,8 +54,9 @@ export default function DetallePedido() {
       setLoading(false);
     }
 
-    if (id) fetchDetalleCompleto();
-  }, [id]);
+    // Solo carga los datos si hay un ID y ya pasó el control de seguridad
+    if (id && autorizado) fetchDetalleCompleto();
+  }, [id, autorizado]);
 
   // Función para tildar o destildar un producto al armar el pedido
   const toggleMarca = (idProducto: string) => {
@@ -51,6 +65,15 @@ export default function DetallePedido() {
       [idProducto]: !prev[idProducto]
     }));
   };
+
+  // Pantalla de espera del patovica
+  if (!autorizado) {
+    return (
+      <main style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', backgroundColor: '#f3f4f6' }}>
+        <p style={{ fontSize: '1.2rem', color: '#6b7280', fontWeight: 'bold' }}>Verificando accesos...</p>
+      </main>
+    );
+  }
 
   if (loading) return <p className="texto-cargando">Cargando detalles del pedido...</p>;
   if (!pedido) return <p className="texto-cargando">No se encontró el pedido.</p>;
