@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { logAuditoria } from '@/lib/auditoria';
 
 export default function Pedidos() {
   const router = useRouter();
@@ -13,7 +14,7 @@ export default function Pedidos() {
   const [pedidos, setPedidos] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   
-  // Estado para controlar la solapa de filtrado actual ('todos', 'full', 'manana', 'tarde')
+  // Estado para controlar la solapa de filtrado actual
   const [filtro, setFiltro] = useState('todos');
 
   async function fetchPedidos() {
@@ -34,20 +35,16 @@ export default function Pedidos() {
 
     // 2. Tomamos decisiones de seguridad
     if (!rol) {
-      router.push('/'); // No logueado -> Login
+      router.push('/'); 
     } else {
-      setRolActivo(rol); // Guardamos el rol para saber qué botones mostrar
-      setAutorizado(true); // Dejamos pasar a ambos (admin y empleado)
+      setRolActivo(rol); 
+      setAutorizado(true); 
       fetchPedidos();
     }
   }, [router]);
 
-  const cambiarEstado = async (id: any, nuevoEstado: string) => {
-    // Seguridad extra: Si un empleado intenta hackear y ejecutar esto, lo bloqueamos
-    if (rolActivo !== 'admin') {
-      alert('No tenés permisos para cambiar el estado del pedido.');
-      return;
-    }
+  const cambiarEstado = async (id: any, nuevoEstado: string, estadoAnterior: string) => {
+    if (nuevoEstado === estadoAnterior) return;
 
     const { error } = await supabase
       .from('pedidos')
@@ -55,19 +52,26 @@ export default function Pedidos() {
       .eq('id_pedido', id);
 
     if (error) {
-      alert('Error al actualizar. Revisá la política de UPDATE en Supabase.');
+      alert('Error al actualizar el estado.');
       console.error(error);
     } else {
+      // Registramos la auditoría del cambio de estado
+      await logAuditoria(
+        'Pedidos',
+        'Cambio de estado',
+        `Actualizó el estado del pedido #${String(id).slice(0, 8)} de "${estadoAnterior}" a "${nuevoEstado}"`
+      );
+
       fetchPedidos(); 
     }
   };
 
   const cerrarSesion = () => {
-    localStorage.removeItem('rolUsuario');
+    localStorage.clear();
     router.push('/');
   };
 
-  // Lógica para filtrar los pedidos según el botón que elija el comerciante
+  // Lógica para filtrar los pedidos
   const pedidosFiltrados = pedidos.filter((pedido) => {
     if (filtro === 'todos') return true;
     if (filtro === 'full') return pedido.estado?.includes('Full');
@@ -76,7 +80,6 @@ export default function Pedidos() {
     return true;
   });
 
-  // Pantalla de espera mientras verifica
   if (!autorizado) {
     return (
       <main style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', backgroundColor: '#f3f4f6' }}>
@@ -99,10 +102,9 @@ export default function Pedidos() {
         </button>
       )}
 
-      <div className="encabezado-pagina" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+      <div className="encabezado-pagina" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
         <h1 className="titulo-pagina" style={{ fontSize: '1.8rem' }}>🛒 Gestión de Pedidos</h1>
         <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
-          {/* Indicador visual de qué cuenta está usando */}
           <span style={{ fontSize: '0.9rem', color: '#6b7280', fontWeight: 'bold' }}>
             👤 Modo: {rolActivo === 'admin' ? 'Administrador' : 'Empleado'}
           </span>
@@ -112,7 +114,7 @@ export default function Pedidos() {
         </div>
       </div>
 
-      {/* PESTAÑAS DE FILTRADO (Organización de recorridos) */}
+      {/* PESTAÑAS DE FILTRADO */}
       <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', flexWrap: 'wrap' }}>
         <button 
           onClick={() => setFiltro('todos')}
@@ -156,22 +158,24 @@ export default function Pedidos() {
               </tr>
             </thead>
             <tbody>
-              {pedidosFiltrados.map((pedido) => (
-                <tr key={pedido.id_pedido} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                  <td className="font-fuerte" style={{ padding: '12px' }}>
-                    #{String(pedido.id_pedido).slice(0, 8)}...
-                  </td>
-                  
-                  <td className="texto-centro font-fuerte" style={{ textAlign: 'center', padding: '12px' }}>
-                    ${pedido.total_compra || 0}
-                  </td>
-                  
-                  <td className="texto-centro" style={{ textAlign: 'center', padding: '12px' }}>
-                    {/* Renderizado condicional según el rol */}
-                    {rolActivo === 'admin' ? (
+              {pedidosFiltrados.map((pedido) => {
+                const estadoActual = pedido.estado || 'Pendiente';
+
+                return (
+                  <tr key={pedido.id_pedido} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                    <td className="font-fuerte" style={{ padding: '12px' }}>
+                      #{String(pedido.id_pedido).slice(0, 8)}...
+                    </td>
+                    
+                    <td className="texto-centro font-fuerte" style={{ textAlign: 'center', padding: '12px' }}>
+                      ${pedido.total_compra || 0}
+                    </td>
+                    
+                    <td className="texto-centro" style={{ textAlign: 'center', padding: '12px' }}>
+                      {/* Ahora tanto admin como empleado pueden actualizar el estado y queda auditado */}
                       <select
-                        value={pedido.estado || 'Pendiente'}
-                        onChange={(e) => cambiarEstado(pedido.id_pedido, e.target.value)}
+                        value={estadoActual}
+                        onChange={(e) => cambiarEstado(pedido.id_pedido, e.target.value, estadoActual)}
                         style={{ width: '170px', padding: '0.4rem', borderRadius: '4px', border: '1px solid #ccc', cursor: 'pointer', backgroundColor: '#fff' }}
                       >
                         <option value="Pendiente">Pendiente</option>
@@ -182,24 +186,20 @@ export default function Pedidos() {
                         <option value="Entregado">Entregado</option>
                         <option value="Cancelado">Cancelado</option>
                       </select>
-                    ) : (
-                      <span style={{ padding: '0.4rem 0.8rem', background: '#f3f4f6', borderRadius: '4px', display: 'inline-block', fontWeight: 'bold' }}>
-                        {pedido.estado || 'Pendiente'}
-                      </span>
-                    )}
-                  </td>
+                    </td>
 
-                  <td className="texto-centro" style={{ textAlign: 'center', padding: '12px' }}>
-                    <Link 
-                      href={`/pedidos/${pedido.id_pedido}`} 
-                      style={{ padding: '0.4rem 0.8rem', backgroundColor: '#2563eb', color: '#fff', borderRadius: '4px', textDecoration: 'none', fontSize: '0.9rem', fontWeight: 'bold' }}
-                    >
-                      👁️ Ver Detalle
-                    </Link>
-                  </td>
+                    <td className="texto-centro" style={{ textAlign: 'center', padding: '12px' }}>
+                      <Link 
+                        href={`/pedidos/${pedido.id_pedido}`} 
+                        style={{ padding: '0.4rem 0.8rem', backgroundColor: '#2563eb', color: '#fff', borderRadius: '4px', textDecoration: 'none', fontSize: '0.9rem', fontWeight: 'bold' }}
+                      >
+                        👁️ Ver Detalle
+                      </Link>
+                    </td>
 
-                </tr>
-              ))}
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

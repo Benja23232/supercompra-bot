@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation'; 
+import { logAuditoria } from '@/lib/auditoria';
 
 export default function DetallePedido() {
   const { id } = useParams(); 
@@ -16,14 +17,17 @@ export default function DetallePedido() {
 
   // Memoria para guardar qué productos ya se agarraron de la estantería
   const [productosMarcados, setProductosMarcados] = useState<Record<string, boolean>>({});
+  
+  // Estado para evitar que se duplique el registro de auditoría mientras esté tildado
+  const [completadoRegistrado, setCompletadoRegistrado] = useState(false);
 
   // 1. Efecto de Seguridad
   useEffect(() => {
     const rol = localStorage.getItem('rolUsuario');
     if (!rol) {
-      router.push('/'); // Si no hay sesión, al login
+      router.push('/'); 
     } else {
-      setAutorizado(true); // Dejamos pasar tanto a admin como a empleados
+      setAutorizado(true); 
     }
   }, [router]);
 
@@ -38,7 +42,6 @@ export default function DetallePedido() {
 
       if (dataPedido) setPedido(dataPedido);
 
-      // ACÁ ESTÁ LA MAGIA: Le pedimos a Supabase que traiga la columna "nombre" de la tabla "productos"
       const { data: dataDetalles, error: errorDetalles } = await supabase
         .from('detalle_pedidos')
         .select(`
@@ -54,19 +57,45 @@ export default function DetallePedido() {
       setLoading(false);
     }
 
-    // Solo carga los datos si hay un ID y ya pasó el control de seguridad
     if (id && autorizado) fetchDetalleCompleto();
   }, [id, autorizado]);
 
+  // Verificamos si todos los productos del pedido ya fueron marcados
+  const todosListos = detalles.length > 0 && detalles.every(item => productosMarcados[item.id_producto]);
+
+  // 3. Efecto para registrar la auditoría cuando se completan todos los productos
+  useEffect(() => {
+    if (todosListos && !completadoRegistrado && id) {
+      logAuditoria(
+        'Pedidos', 
+        'Pedido Completado', 
+        `Terminó de armar y verificar todos los productos del pedido #${String(id).slice(0, 8)}`
+      );
+      setCompletadoRegistrado(true);
+    } else if (!todosListos && completadoRegistrado) {
+      // Si destildan alguno, reseteamos la bandera por si vuelven a completar
+      setCompletadoRegistrado(false);
+    }
+  }, [todosListos, completadoRegistrado, id]);
+
   // Función para tildar o destildar un producto al armar el pedido
-  const toggleMarca = (idProducto: string) => {
+  const toggleMarca = (idProducto: string, nombreProducto: string) => {
+    const nuevoEstado = !productosMarcados[idProducto];
+    
     setProductosMarcados((prev) => ({
       ...prev,
-      [idProducto]: !prev[idProducto]
+      [idProducto]: nuevoEstado
     }));
+
+    // Auditoría individual de cada producto marcado/destildado
+    const accionTexto = nuevoEstado ? 'Marcó producto como listo' : 'Destildó producto';
+    logAuditoria(
+      'Pedidos', 
+      accionTexto, 
+      `Producto: "${nombreProducto}" en pedido #${String(id).slice(0, 8)}`
+    );
   };
 
-  // Pantalla de espera del patovica
   if (!autorizado) {
     return (
       <main style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', backgroundColor: '#f3f4f6' }}>
@@ -78,7 +107,6 @@ export default function DetallePedido() {
   if (loading) return <p className="texto-cargando">Cargando detalles del pedido...</p>;
   if (!pedido) return <p className="texto-cargando">No se encontró el pedido.</p>;
 
-  // Función para determinar el estilo de la insignia según el tipo de envío
   const obtenerBadgeEnvio = (estado: string) => {
     if (estado?.includes('Full')) {
       return { texto: '🚀 ENVÍO FULL', fondo: '#f3e8ff', color: '#7e22ce', borde: '#d8b4fe' };
@@ -92,9 +120,6 @@ export default function DetallePedido() {
 
   const badge = obtenerBadgeEnvio(pedido.estado);
 
-  // Verificamos si todos los productos del pedido ya fueron marcados
-  const todosListos = detalles.length > 0 && detalles.every(item => productosMarcados[item.id_producto]);
-
   return (
     <main className="contenedor-pagina" style={{ maxWidth: '800px', margin: '0 auto', padding: '20px' }}>
       <Link href="/pedidos" className="link-volver" style={{ display: 'inline-block', marginBottom: '20px', color: '#2563eb', textDecoration: 'none' }}>
@@ -104,7 +129,6 @@ export default function DetallePedido() {
       <div className="encabezado-pagina" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <h1 className="titulo-pagina" style={{ fontSize: '1.8rem' }}>Pedido #{String(pedido.id_pedido).slice(0, 8)}</h1>
         
-        {/* Insignia visual del tipo de envío */}
         <span style={{ 
           backgroundColor: badge.fondo, 
           color: badge.color, 
@@ -147,6 +171,7 @@ export default function DetallePedido() {
           <tbody>
             {detalles.map((item, index) => {
               const estaMarcado = productosMarcados[item.id_producto];
+              const nombreProd = item.productos?.nombre || 'Producto desconocido';
 
               return (
                 <tr 
@@ -162,13 +187,12 @@ export default function DetallePedido() {
                     <input 
                       type="checkbox" 
                       checked={estaMarcado || false}
-                      onChange={() => toggleMarca(item.id_producto)}
+                      onChange={() => toggleMarca(item.id_producto, nombreProd)}
                       style={{ width: '22px', height: '22px', cursor: 'pointer' }}
                     />
                   </td>
-                  {/* ACÁ MOSTRAMOS EL NOMBRE EN LUGAR DEL ID */}
                   <td className="font-fuerte" style={{ padding: '10px', textDecoration: estaMarcado ? 'line-through' : 'none', color: '#000' }}>
-                    {item.productos?.nombre || 'Producto desconocido'}
+                    {nombreProd}
                   </td>
                   <td className="texto-centro" style={{ textAlign: 'center', padding: '10px', textDecoration: estaMarcado ? 'line-through' : 'none', color: '#000' }}>
                     <strong style={{ fontSize: '1.1rem' }}>{item.cantidad}</strong>
