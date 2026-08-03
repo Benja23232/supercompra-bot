@@ -71,6 +71,13 @@ export default function Dashboard() {
             <h2 className="titulo-tarjeta">Clientes</h2>
             <p className="texto-tarjeta">Base de datos de usuarios, números y contactos frecuentes.</p>
           </Link>
+          
+          {/* Tarjeta Auditorías */}
+          <Link href="/auditorias" className="tarjeta tarjeta-azul" style={{ borderColor: '#3b82f6' }}>
+            <div className="icono-caja">🛡️</div>
+            <h2 className="titulo-tarjeta">Auditorías</h2>
+            <p className="texto-tarjeta">Registro de actividad del personal, accesos y modificaciones en el sistema.</p>
+          </Link>
 
         </div>
       </div>
