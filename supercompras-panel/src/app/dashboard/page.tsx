@@ -7,25 +7,32 @@ import Link from 'next/link';
 export default function Dashboard() {
   const router = useRouter();
   const [autorizado, setAutorizado] = useState(false);
+  const [emailUsuario, setEmailUsuario] = useState('');
+  
+  // Estado para el efecto hover del borde de la tarjeta de auditorías
+  const [hoverAuditoria, setHoverAuditoria] = useState(false);
 
   useEffect(() => {
-    // 1. Buscamos la credencial en la memoria del navegador
+    // 1. Buscamos las credenciales en la memoria del navegador
     const rol = localStorage.getItem('rolUsuario');
+    const email = localStorage.getItem('emailUsuario');
 
     // 2. Tomamos decisiones de seguridad
     if (!rol) {
-      // Si no hay credencial, lo pateamos a la pantalla de login (la raíz '/')
       router.push('/');
     } else if (rol !== 'admin') {
-      // Si es un empleado intentando entrar al dashboard, lo mandamos a sus pedidos
       router.push('/pedidos');
     } else {
-      // Si es admin, le damos luz verde para ver el panel
+      setEmailUsuario(email || 'Administrador');
       setAutorizado(true);
     }
   }, [router]);
 
-  // Pantalla de espera mientras verifica (evita que se vea el panel por una fracción de segundo)
+  const cerrarSesion = () => {
+    localStorage.clear();
+    router.push('/');
+  };
+
   if (!autorizado) {
     return (
       <main style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', backgroundColor: '#f3f4f6' }}>
@@ -38,6 +45,41 @@ export default function Dashboard() {
     <main className="panel-principal">
       <div className="contenedor-panel">
         
+        {/* Barra de bienvenida y sesión del Administrador */}
+        <div style={{ 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center', 
+          marginBottom: '20px', 
+          padding: '12px 20px', 
+          background: '#f8fafc', 
+          borderRadius: '10px', 
+          border: '1px solid #e2e8f0', 
+          flexWrap: 'wrap', 
+          gap: '10px',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.95rem', color: '#334155' }}>
+            <span>👋 ¡Hola, administrador <strong>{emailUsuario}</strong>!</span>
+          </div>
+          <button 
+            onClick={cerrarSesion} 
+            style={{ 
+              background: 'none', 
+              border: 'none', 
+              color: '#dc2626', 
+              cursor: 'pointer', 
+              fontWeight: 'bold', 
+              fontSize: '0.9rem', 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '5px' 
+            }}
+          >
+            🔒 Cerrar Sesión
+          </button>
+        </div>
+
         {/* Cabecera */}
         <div className="cabecera">
           <h1 className="titulo">
@@ -72,8 +114,19 @@ export default function Dashboard() {
             <p className="texto-tarjeta">Base de datos de usuarios, números y contactos frecuentes.</p>
           </Link>
           
-          {/* Tarjeta Auditorías */}
-          <Link href="/auditorias" className="tarjeta tarjeta-azul" style={{ borderColor: '#3b82f6' }}>
+          {/* Tarjeta Auditorías con borde activo en hover */}
+          <Link 
+            href="/auditorias" 
+            className="tarjeta tarjeta-azul" 
+            style={{ 
+              borderColor: hoverAuditoria ? '#2563eb' : '#cbd5e1', 
+              borderWidth: hoverAuditoria ? '2px' : '1px',
+              transition: 'all 0.2s ease-in-out',
+              boxShadow: hoverAuditoria ? '0 10px 15px -3px rgba(37, 99, 235, 0.15)' : 'none'
+            }}
+            onMouseEnter={() => setHoverAuditoria(true)}
+            onMouseLeave={() => setHoverAuditoria(false)}
+          >
             <div className="icono-caja">🛡️</div>
             <h2 className="titulo-tarjeta">Auditorías</h2>
             <p className="texto-tarjeta">Registro de actividad del personal, accesos y modificaciones en el sistema.</p>
