@@ -9,7 +9,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: 'Faltan datos obligatorios' }, { status: 400 });
     }
 
-    // 1. Crear el producto tipo "combo" (no tiene stock propio, depende de sus partes)
+    // 1. Crear el producto tipo "combo" en Supabase
     const { data: comboCreado, error: errorCombo } = await supabase
       .from('productos')
       .insert([{ 
@@ -23,7 +23,7 @@ export async function POST(request: Request) {
 
     if (errorCombo) throw new Error(errorCombo.message);
 
-    // 2. Armar la "receta" y guardarla en combo_detalle
+    // 2. Guardar la receta en combo_detalle
     const detalles = productos_combo.map((p: any) => ({
       combo_id: comboCreado.id_producto,
       producto_id: p.id_producto,
@@ -36,16 +36,16 @@ export async function POST(request: Request) {
 
     if (errorDetalles) throw new Error(errorDetalles.message);
 
-    // 3. Sincronizar el combo con el catálogo de Meta (WhatsApp)
+    // 3. Sincronizar con Meta (WhatsApp)
     const catalogId = process.env.META_CATALOG_ID;
     const accessToken = process.env.META_ACCESS_TOKEN;
 
     if (catalogId && accessToken) {
       const imagenFinal = image_url && image_url.trim() !== '' 
         ? image_url.trim() 
-        : 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d'; // Imagen de regalo/promo genérica
+        : 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d';
 
-      await fetch(`https://graph.facebook.com/v19.0/${catalogId}/products`, {
+      const responseMeta = await fetch(`https://graph.facebook.com/v19.0/${catalogId}/products`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -53,7 +53,7 @@ export async function POST(request: Request) {
         },
         body: JSON.stringify({
           retailer_id: comboCreado.id_producto,
-          name: `✨ ${nombre.trim()}`, // Le agregamos un emoji para que resalte en WhatsApp
+          name: nombre.trim(), // Quitamos el emoji por las dudas si Meta se pone estricto
           description: 'Promo especial / Combo.',
           price: Math.round(Number(precio) * 100),
           currency: 'ARS',
@@ -62,6 +62,12 @@ export async function POST(request: Request) {
           image_url: imagenFinal
         })
       });
+
+      const metaData = await responseMeta.json();
+      
+      if (!responseMeta.ok) {
+        console.error("Error al sincronizar combo con Meta:", metaData);
+      }
     }
 
     return NextResponse.json({ success: true, combo: comboCreado });
