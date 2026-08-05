@@ -14,7 +14,7 @@ const pedidosEsperandoPago = new Map();
 const pedidosEsperandoComprobante = new Map(); 
 
 const COSTO_ENVIO = 4000;
-const COSTO_FULL = 1000; // Agregamos la variable de tu costo ficticio
+const COSTO_FULL = 1000;
 
 const verificarToken = (req, res) => {
     const verify_token = process.env.WHATSAPP_VERIFY_TOKEN;
@@ -47,7 +47,6 @@ const recibirMensaje = async (req, res) => {
                 pedidosEsperandoDireccion.delete(numeroCliente);
                 pedidosEsperandoTurno.set(numeroCliente, datosPedido.idPedido);
 
-                // ACÁ ESTÁ EL CAMBIO: Sumamos el 3er botón de Envío Full
                 const dataBotonesTurno = {
                     messaging_product: "whatsapp",
                     to: numeroCliente,
@@ -116,26 +115,54 @@ const recibirMensaje = async (req, res) => {
             }
         }
 
-        // 3. RECEPCIÓN DEL CARRITO
+        // 3. RECEPCIÓN DEL CARRITO (CON VALIDACIÓN DE STOCK)
         if (message.type === 'order') {
             const itemsCatalogo = message.order.product_items;
             try {
-                await pool.query(`INSERT INTO clientes (whatsapp_id, nombre) VALUES ($1, $2) ON CONFLICT (whatsapp_id) DO NOTHING`, [numeroCliente, 'Cliente WhatsApp']);
+                let hayProblemasDeStock = false;
+                let mensajeStockFaltante = "¡Hola! Revisamos tu pedido y tenemos un problema con el stock actual de estos productos:\n\n";
                 let subtotal = 0;
                 const detallesParaInsertar = [];
                 
                 for (let item of itemsCatalogo) {
                     const idProductoMeta = item.product_retailer_id; 
                     const quantity = item.quantity;
-                    const resProd = await pool.query('SELECT precio FROM productos WHERE id_producto = $1', [idProductoMeta]);
+                    
+                    // Consultamos el stock actual y el precio en la base de datos
+                    const resProd = await pool.query('SELECT nombre, precio, stock_fisico FROM productos WHERE id_producto = $1', [idProductoMeta]);
                     
                     if (resProd.rows.length > 0) {
-                        const precioActual = resProd.rows[0].precio;
-                        subtotal += (precioActual * quantity);
-                        detallesParaInsertar.push({ id: idProductoMeta, cantidad: quantity, precio: precioActual });
+                        const producto = resProd.rows[0];
+                        const precioActual = producto.precio;
+                        const stockActual = producto.stock_fisico || 0;
+                        const nombreProd = producto.nombre;
+
+                        if (stockActual <= 0) {
+                            mensajeStockFaltante += `❌ *${nombreProd}*: No tenemos stock en este momento.\n`;
+                            hayProblemasDeStock = true;
+                        } else if (stockActual < quantity) {
+                            mensajeStockFaltante += `⚠️ *${nombreProd}*: Solo nos quedan ${stockActual} unidades (pediste ${quantity}).\n`;
+                            hayProblemasDeStock = true;
+                        } else {
+                            subtotal += (precioActual * quantity);
+                            detallesParaInsertar.push({ id: idProductoMeta, cantidad: quantity, precio: precioActual });
+                        }
+                    } else {
+                        mensajeStockFaltante += `❌ Producto no encontrado en nuestro sistema.\n`;
+                        hayProblemasDeStock = true;
                     }
                 }
 
+                // Si hay falta de stock, avisamos al cliente y cortamos la ejecución sin guardar
+                if (hayProblemasDeStock) {
+                    mensajeStockFaltante += "\nPor favor, ingresá nuevamente al catálogo y armá tu carrito ajustando las cantidades. ¡Perdón por las molestias! 🙏";
+                    await enviarMensaje(numeroCliente, mensajeStockFaltante);
+                    return res.sendStatus(200);
+                }
+
+                // Si todo está OK con el stock, guardamos el cliente y el pedido
+                await pool.query(`INSERT INTO clientes (whatsapp_id, nombre) VALUES ($1, $2) ON CONFLICT (whatsapp_id) DO NOTHING`, [numeroCliente, 'Cliente WhatsApp']);
+                
                 if (detallesParaInsertar.length === 0) return res.sendStatus(200);
                 const totalCarrito = subtotal + COSTO_ENVIO;
 
@@ -153,7 +180,7 @@ const recibirMensaje = async (req, res) => {
                 }
 
                 pedidosEsperandoDireccion.set(numeroCliente, { idPedido: idNuevoPedido, subtotal: subtotal, total: totalCarrito });
-                await enviarMensaje(numeroCliente, "🛒 ¡Recibimos tu pedido y ya lo estamos procesando!\n\nPor favor, *escribinos la dirección* a donde querés que lo enviemos (Calle y número).");
+                await enviarMensaje(numeroCliente, "🛒 ¡Recibimos tu pedido y verificamos que hay stock de todo!\n\nPor favor, *escribinos la dirección* a donde querés que lo enviemos (Calle y número).");
 
             } catch (errorBD) {
                 console.error("Error BD Carrito:", errorBD);
@@ -164,7 +191,6 @@ const recibirMensaje = async (req, res) => {
         if (message.type === 'interactive') {
             let opcion = message.interactive.type === 'button_reply' ? message.interactive.button_reply.id : message.interactive.list_reply.id;
 
-            // ACÁ ESTÁ EL CAMBIO DE LÓGICA Y PRECIO
             if (opcion === 'entrega_manana' || opcion === 'entrega_tarde' || opcion === 'envio_full') {
                 const idPedidoAsociado = pedidosEsperandoTurno.get(numeroCliente);
                 if (!idPedidoAsociado) return await enviarMensaje(numeroCliente, "La sesión expiró, por favor reenviá tu carrito.");
@@ -178,17 +204,15 @@ const recibirMensaje = async (req, res) => {
                     nuevoEstado = 'Pendiente - Tarde';
                 } else if (opcion === 'envio_full') {
                     nuevoEstado = 'Pendiente - Full';
-                    recargoExtra = COSTO_FULL; // Aplicamos los $1000 extra
+                    recargoExtra = COSTO_FULL; 
                 }
 
-                // Si hay recargo, actualizamos el estado Y sumamos el precio en la base de datos
                 if (recargoExtra > 0) {
                     await pool.query('UPDATE pedidos SET estado = $1, total_compra = total_compra + $2 WHERE id_pedido = $3', [nuevoEstado, recargoExtra, idPedidoAsociado]);
                 } else {
                     await pool.query('UPDATE pedidos SET estado = $1 WHERE id_pedido = $2', [nuevoEstado, idPedidoAsociado]);
                 }
 
-                // Traemos el total final (ya actualizado si fue full) para mostrarlo en el texto
                 const resTotal = await pool.query('SELECT total_compra FROM pedidos WHERE id_pedido = $1', [idPedidoAsociado]);
                 const totalActualizado = resTotal.rows[0].total_compra;
 
@@ -223,7 +247,6 @@ const recibirMensaje = async (req, res) => {
                 await axios.post(`https://graph.facebook.com/v17.0/${process.env.WHATSAPP_PHONE_ID}/messages`, dataMenuPago, { headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` } });
             }
 
-            // (El bloque de pagos sigue igual, validando el total desde la base de datos)
             if (opcion === 'pago_mp' || opcion === 'pago_transferencia' || opcion === 'pago_cuenta_dni' || opcion === 'pago_cuenta') {
                 const idPedidoAsociado = pedidosEsperandoPago.get(numeroCliente);
                 if (!idPedidoAsociado) return await enviarMensaje(numeroCliente, "Hubo un problema con tu sesión de pago.");
