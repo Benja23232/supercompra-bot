@@ -253,7 +253,7 @@ export default function Productos() {
                 const estaOculto = prod.activo === false;
                 
                 return (
-                  <tr key={prod.id_producto} style={{ opacity: estaOculto ? 0.4 : 1, backgroundColor: esCombo ? '#fffbe1' : 'transparent' }}>
+                  <tr key={prod.id_producto} style={{ opacity: estaOculto ? 0.4 : 1, backgroundColor: esCombo ? '#131111' : 'transparent' }}>
                     <td className="font-fuerte">
                       {esCombo && "✨ "}
                       {esEditando ? (
