@@ -71,7 +71,7 @@ export default function Pedidos() {
     router.push('/');
   };
 
-  // NUEVA FUNCIÓN: Generar ruta múltiple en Google Maps con los pedidos filtrados o actuales
+  // FUNCIÓN PARA GENERAR RUTA EN GOOGLE MAPS (Ajustada para Tres Lomas, Buenos Aires)
   const abrirRutaEnMapa = () => {
     // Filtramos solo los pedidos que tienen dirección cargada
     const pedidosConDireccion = pedidosFiltrados.filter(p => p.direccion && p.direccion.trim() !== '');
@@ -81,13 +81,21 @@ export default function Pedidos() {
       return;
     }
 
-    const origen = encodeURIComponent(pedidosConDireccion[0].direccion);
-    const destino = encodeURIComponent(pedidosConDireccion[pedidosConDireccion.length - 1].direccion);
+    // Función auxiliar para asegurar que Google Maps ubique la dirección en Tres Lomas
+    const formatearDir = (dir: string) => {
+      const limpia = dir.trim();
+      if (limpia.toLowerCase().includes('tres lomas')) return limpia;
+      return `${limpia}, Tres Lomas, Buenos Aires`;
+    };
+
+    const origen = encodeURIComponent(formatearDir(pedidosConDireccion[0].direccion));
+    const direccionDestino = pedidosConDireccion[pedidosConDireccion.length - 1].direccion;
+    const destinoFinal = encodeURIComponent(formatearDir(direccionDestino));
 
     const puntosIntermedios = pedidosConDireccion.slice(1, -1);
-    const waypoints = puntosIntermedios.map(p => encodeURIComponent(p.direccion)).join('|');
+    const waypoints = puntosIntermedios.map(p => encodeURIComponent(formatearDir(p.direccion))).join('|');
 
-    let urlMaps = `https://www.google.com/maps/dir/?api=1&origin=${origen}&destination=${destino}`;
+    let urlMaps = `https://www.google.com/maps/dir/?api=1&origin=${origen}&destination=${destinoFinal}`;
     
     if (waypoints.length > 0) {
       urlMaps += `&waypoints=${waypoints}`;
@@ -131,7 +139,7 @@ export default function Pedidos() {
         <h1 className="titulo-pagina" style={{ fontSize: '1.8rem' }}>🛒 Gestión de Pedidos</h1>
         
         <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
-          {/* BOTÓN NUEVO PARA GENERAR LA RUTA DE REPARTO */}
+          {/* BOTÓN PARA GENERAR LA RUTA DE REPARTO */}
           <button 
             onClick={abrirRutaEnMapa}
             style={{ 
