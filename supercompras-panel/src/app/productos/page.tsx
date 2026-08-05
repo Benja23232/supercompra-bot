@@ -12,8 +12,10 @@ export default function Productos() {
   const [loading, setLoading] = useState(true);
   const [subiendo, setSubiendo] = useState(false);
   
+  // Estados de edición general (Nombre y Precio)
   const [editandoId, setEditandoId] = useState<string | null>(null);
-  const [nuevoPrecio, setNuevoPrecio] = useState<number>(0);
+  const [editNombre, setEditNombre] = useState('');
+  const [editPrecio, setEditPrecio] = useState<number>(0);
 
   const [loteProductoId, setLoteProductoId] = useState<string | null>(null);
   const [loteCant, setLoteCant] = useState<number | ''>('');
@@ -48,7 +50,6 @@ export default function Productos() {
         const proximoVenc = lotesActivos.length > 0 ? new Date(lotesActivos[0].fecha_vencimiento).getTime() : Infinity;
         return { ...p, lotesActivos, proximoVenc };
       });
-      // Combos al final, productos ordenados por vencimiento arriba
       procesados.sort((a, b) => {
         if (a.tipo === 'combo' && b.tipo !== 'combo') return 1;
         if (a.tipo !== 'combo' && b.tipo === 'combo') return -1;
@@ -69,12 +70,44 @@ export default function Productos() {
     }
   }, [router]);
 
-  // Funciones de Lotes y Precios
-  const activarEdicion = (prod: any) => { setEditandoId(prod.id_producto); setNuevoPrecio(prod.precio); };
-  const guardarCambioPrecio = async (id: string) => {
-    await supabase.from('productos').update({ precio: nuevoPrecio }).eq('id_producto', id);
-    setEditandoId(null); fetchProductos();
+  const activarEdicion = (prod: any) => {
+    setEditandoId(prod.id_producto);
+    setEditNombre(prod.nombre);
+    setEditPrecio(prod.precio);
   };
+
+  const guardarEdicion = async (id: string) => {
+    const res = await fetch('/api/productos', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id_producto: id, nombre: editNombre, precio: editPrecio })
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) alert("Error al actualizar");
+    setEditandoId(null);
+    fetchProductos();
+  };
+
+  const toggleActivo = async (prod: any) => {
+    const nuevoEstado = prod.activo === false ? true : false;
+    const accionTexto = nuevoEstado ? 'mostrar' : 'ocultar';
+    
+    if (!confirm(`¿Estás seguro de ${accionTexto} "${prod.nombre}"?`)) return;
+
+    const res = await fetch('/api/productos', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id_producto: prod.id_producto, activo: nuevoEstado })
+    });
+
+    const data = await res.json();
+    if (res.ok && data.success) {
+      fetchProductos();
+    } else {
+      alert("Error al cambiar estado");
+    }
+  };
+
   const activarCargaLote = (id: string) => { setLoteProductoId(id); setLoteCant(''); setLoteFecha(''); };
   const guardarNuevoLote = async (id: string) => {
     if (loteCant === '' || loteFecha === '') return;
@@ -85,7 +118,6 @@ export default function Productos() {
     setLoteProductoId(null); fetchProductos();
   };
 
-  // Crear Producto Normal
   const crearProducto = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubiendo(true);
@@ -103,7 +135,6 @@ export default function Productos() {
     setMostrarFormulario(false); fetchProductos(); setSubiendo(false);
   };
 
-  // Funciones Combo
   const agregarItemCombo = () => {
     if (!productoSeleccionado) return;
     const prod = productos.find(p => p.id_producto === productoSeleccionado);
@@ -140,7 +171,6 @@ export default function Productos() {
 
   if (!autorizado) return <p>Cargando...</p>;
 
-  // Solo productos unitarios para armar combos
   const productosUnitarios = productos.filter(p => p.tipo !== 'combo');
 
   return (
@@ -148,18 +178,17 @@ export default function Productos() {
       <Link href="/dashboard" className="link-volver">🔙 Volver al panel principal</Link>
 
       <div className="encabezado-pagina">
-        <h1 className="titulo-pagina">📦 Depósito y Combos</h1>
+        <h1 className="titulo-pagina">📦 Depósito y Promos</h1>
         <div className="grupo-botones">
           <button onClick={() => {setMostrarFormulario(!mostrarFormulario); setMostrarFormCombo(false);}} className="btn btn-primario">
             {mostrarFormulario ? '❌ Cancelar' : '➕ Producto Individual'}
           </button>
           <button onClick={() => {setMostrarFormCombo(!mostrarFormCombo); setMostrarFormulario(false);}} className="btn btn-exito">
-            {mostrarFormCombo ? '❌ Cancelar' : '✨ Crear Combo / Promo'}
+            {mostrarFormCombo ? '❌ Cancelar' : '✨ Crear Promo/Combo'}
           </button>
         </div>
       </div>
 
-      {/* Formulario Producto Normal */}
       {mostrarFormulario && (
         <form onSubmit={crearProducto} className="formulario-nuevo" style={{ flexWrap: 'wrap' }}>
           <h3 style={{width: '100%', marginBottom: '10px'}}>Alta de Producto Individual</h3>
@@ -172,23 +201,21 @@ export default function Productos() {
         </form>
       )}
 
-      {/* Formulario Combo/Promo */}
       {mostrarFormCombo && (
         <form onSubmit={crearCombo} className="formulario-nuevo" style={{ flexWrap: 'wrap', backgroundColor: '#fffbe1', borderColor: '#fef08a' }}>
-          <h3 style={{width: '100%', marginBottom: '10px', color: '#854d0e'}}>✨ Armar Promoción (Ej: 2x1 Jorgito, Combo Fernet)</h3>
-          
-          <div className="campo-form grow"><label className="label-form">Nombre de la Promo</label><input type="text" required value={formNombre} onChange={(e) => setFormNombre(e.target.value)} className="input-form" placeholder="Ej: 2x1 Alfajor Guaymallen"/></div>
+          <h3 style={{width: '100%', marginBottom: '10px', color: '#854d0e'}}>✨ Armar Promoción / Combo</h3>
+          <div className="campo-form grow"><label className="label-form">Nombre de la Promo</label><input type="text" required value={formNombre} onChange={(e) => setFormNombre(e.target.value)} className="input-form" placeholder="Ej: 2x1 Alfajor Jorgito"/></div>
           <div className="campo-form num"><label className="label-form">Precio Final ($)</label><input type="number" required min="0" step="0.01" value={formPrecio} onChange={(e) => setFormPrecio(Number(e.target.value))} className="input-form"/></div>
-          <div className="campo-form grow" style={{ width: '100%' }}><label className="label-form">Imagen Promocional (Banner / Foto)</label><input type="file" accept="image/*" onChange={(e) => setFormArchivo(e.target.files ? e.target.files[0] : null)} className="input-form"/></div>
+          <div className="campo-form grow" style={{ width: '100%' }}><label className="label-form">Imagen Promocional</label><input type="file" accept="image/*" onChange={(e) => setFormArchivo(e.target.files ? e.target.files[0] : null)} className="input-form"/></div>
 
           <div style={{width: '100%', padding: '15px', background: '#fff', borderRadius: '8px', border: '1px dashed #ccc', margin: '10px 0'}}>
-            <label className="label-form font-fuerte">¿Qué productos componen este combo?</label>
+            <label className="label-form font-fuerte">Productos que componen este combo:</label>
             <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
               <select value={productoSeleccionado} onChange={(e) => setProductoSeleccionado(e.target.value)} className="input-form" style={{flexGrow: 1}}>
                 <option value="">-- Seleccionar producto --</option>
                 {productosUnitarios.map(p => <option key={p.id_producto} value={p.id_producto}>{p.nombre}</option>)}
               </select>
-              <input type="number" min="1" value={cantidadSeleccionada} onChange={(e) => setCantidadSeleccionada(Number(e.target.value))} className="input-form" style={{width: '80px'}} title="Cantidad"/>
+              <input type="number" min="1" value={cantidadSeleccionada} onChange={(e) => setCantidadSeleccionada(Number(e.target.value))} className="input-form" style={{width: '80px'}}/>
               <button type="button" onClick={agregarItemCombo} className="btn btn-secundario">Agregar</button>
             </div>
             
@@ -199,56 +226,58 @@ export default function Productos() {
                   <button type="button" onClick={() => eliminarItemCombo(index)} style={{color: 'red', cursor: 'pointer', background: 'none', border: 'none'}}>✖</button>
                 </li>
               ))}
-              {comboItems.length === 0 && <p style={{fontSize: '0.85rem', color: '#6b7280'}}>No agregaste ningún producto todavía.</p>}
             </ul>
           </div>
 
-          <button type="submit" className="btn btn-exito btn-form" style={{ width: '100%' }} disabled={subiendo}>{subiendo ? 'Guardando Promo...' : 'Crear Promo y Publicar en WhatsApp'}</button>
+          <button type="submit" className="btn btn-exito btn-form" style={{ width: '100%' }} disabled={subiendo}>{subiendo ? 'Guardando...' : 'Crear Promo y Publicar en WhatsApp'}</button>
         </form>
       )}
       
-      {loading ? <p className="texto-cargando">Cargando depósito...</p> : (
+      {loading ? <p className="texto-cargando">Cargando...</p> : (
         <div className="contenedor-tabla">
           <table className="tabla-datos">
             <thead>
               <tr>
                 <th className="texto-izq">Producto / Promo</th>
                 <th className="texto-centro">Precio</th>
-                <th className="texto-izq">Depósito (Lotes / Info)</th>
+                <th className="texto-izq">Depósito / Receta</th>
                 <th className="texto-centro">Stock Físico</th>
                 <th className="texto-centro">Acciones</th>
               </tr>
             </thead>
             <tbody>
               {productos.map((prod) => {
-                const esEditandoPrecio = editandoId === prod.id_producto;
+                const esEditando = editandoId === prod.id_producto;
                 const esAgregandoLote = loteProductoId === prod.id_producto;
                 const esCombo = prod.tipo === 'combo';
+                const estaOculto = prod.activo === false;
                 
                 return (
-                  <tr key={prod.id_producto} style={prod.stock_fisico === 0 && !esCombo ? { opacity: 0.6 } : { backgroundColor: esCombo ? '#fffbe1' : 'transparent'}}>
+                  <tr key={prod.id_producto} style={{ opacity: estaOculto ? 0.4 : 1, backgroundColor: esCombo ? '#fffbe1' : 'transparent' }}>
                     <td className="font-fuerte">
-                      {esCombo && "✨ "} {prod.nombre}
+                      {esCombo && "✨ "}
+                      {esEditando ? (
+                        <input type="text" value={editNombre} onChange={(e) => setEditNombre(e.target.value)} className="input-tabla" style={{width: '100%'}}/>
+                      ) : (
+                        <span>{prod.nombre} {estaOculto && " 🙈 (Oculto)"}</span>
+                      )}
                     </td>
                     
                     <td className="texto-centro">
-                      {esEditandoPrecio ? (
-                        <input type="number" step="0.01" value={nuevoPrecio} onChange={(e) => setNuevoPrecio(parseFloat(e.target.value) || 0)} className="input-tabla corto"/>
+                      {esEditando ? (
+                        <input type="number" step="0.01" value={editPrecio} onChange={(e) => setEditPrecio(parseFloat(e.target.value) || 0)} className="input-tabla corto"/>
                       ) : `$${prod.precio}`}
                     </td>
                     
                     <td className="texto-izq">
                       {esCombo ? (
-                        <span style={{ fontSize: '0.85rem', color: '#854d0e', fontStyle: 'italic' }}>
-                          Promo activa. Descuenta stock de sus componentes.
-                        </span>
+                        <span style={{ fontSize: '0.85rem', color: '#854d0e', fontStyle: 'italic' }}>Promo / Combo activo</span>
                       ) : (
                         <>
                           {prod.lotesActivos?.length > 0 ? (
                             prod.lotesActivos.map((l: any, index: number) => (
                               <div key={l.id_lote} style={{ fontSize: '0.85rem', color: index === 0 ? '#b91c1c' : '#4b5563', fontWeight: index === 0 ? 'bold' : 'normal' }}>
-                                {index === 0 && '⚠️ Próximo a vencer: '}
-                                {l.cantidad} u. ➡️ {l.fecha_vencimiento.split('-').reverse().join('/')}
+                                {index === 0 && '⚠️ '} {l.cantidad} u. ➡️ {l.fecha_vencimiento.split('-').reverse().join('/')}
                               </div>
                             ))
                           ) : <span style={{ color: '#9ca3af', fontSize: '0.85rem' }}>Sin lotes activos</span>}
@@ -266,25 +295,22 @@ export default function Productos() {
                     </td>
 
                     <td className="texto-centro">
-                      {esCombo ? (
-                        <span className="badge badge-verde">Promo Dinámica</span>
-                      ) : (
-                        <span className={prod.stock_fisico > 0 ? 'badge badge-verde' : 'badge badge-rojo'}>
-                          {prod.stock_fisico} u.
-                        </span>
-                      )}
+                      {esCombo ? <span className="badge badge-verde">Promo</span> : <span className={prod.stock_fisico > 0 ? 'badge badge-verde' : 'badge badge-rojo'}>{prod.stock_fisico} u.</span>}
                     </td>
                     
                     <td className="texto-centro">
-                      {!esEditandoPrecio && !esAgregandoLote && (
-                        <div className="grupo-botones-centro">
+                      {!esEditando && !esAgregandoLote && (
+                        <div className="grupo-botones-centro" style={{gap: '4px'}}>
                            {!esCombo && <button onClick={() => activarCargaLote(prod.id_producto)} className="btn-chico btn-primario">+ Lote</button>}
-                           <button onClick={() => activarEdicion(prod)} className="btn-chico btn-secundario">Editar Precio</button>
+                           <button onClick={() => activarEdicion(prod)} className="btn-chico btn-secundario">✏️ Editar</button>
+                           <button onClick={() => toggleActivo(prod)} className="btn-chico" style={{backgroundColor: estaOculto ? '#16a34a' : '#ca8a04', color: '#fff'}}>
+                             {estaOculto ? '👁️ Mostrar' : '🙈 Ocultar'}
+                           </button>
                         </div>
                       )}
-                      {esEditandoPrecio && (
+                      {esEditando && (
                         <div className="grupo-botones-centro">
-                          <button onClick={() => guardarCambioPrecio(prod.id_producto)} className="btn-chico btn-exito">Guardar</button>
+                          <button onClick={() => guardarEdicion(prod.id_producto)} className="btn-chico btn-exito">Guardar</button>
                           <button onClick={() => setEditandoId(null)} className="btn-chico btn-peligro">Cancelar</button>
                         </div>
                       )}
