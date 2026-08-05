@@ -127,10 +127,11 @@ export default function Pedidos() {
   };
   const tabActiva = tabsInfo[filtro];
 
+  // Renderizado de las tablas RECUPERANDO TUS CLASES ORIGINALES (tabla-datos, contenedor-tabla, etc)
   const renderTablaPedidos = (lista: any[], tituloSecc: string, colorBorde: string, descripcion: string) => {
     if (lista.length === 0) {
       return (
-        <div style={{ marginBottom: '20px', padding: '20px', backgroundColor: '#fff', borderRadius: '12px', borderLeft: `6px solid #e5e7eb`, boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+        <div style={{ marginBottom: '20px', padding: '20px', backgroundColor: '#fff', borderRadius: '8px', borderLeft: `6px solid #e5e7eb`, boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
           <h2 style={{ fontSize: '1.2rem', color: '#374151', margin: '0 0 5px 0' }}>{tituloSecc} (0)</h2>
           <p style={{ color: '#9ca3af', margin: 0, fontSize: '0.9rem' }}>No hay pedidos en esta etapa.</p>
         </div>
@@ -138,20 +139,22 @@ export default function Pedidos() {
     }
 
     return (
-      <div style={{ marginBottom: '25px', backgroundColor: '#fff', borderRadius: '12px', overflow: 'hidden', border: '1px solid #e5e7eb', borderLeft: `6px solid ${colorBorde}`, boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
+      <div style={{ marginBottom: '35px', backgroundColor: '#fff', borderRadius: '8px', border: '1px solid #e5e7eb', borderLeft: `6px solid ${colorBorde}`, boxShadow: '0 2px 4px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
         <div style={{ padding: '15px 20px', borderBottom: '1px solid #e5e7eb', backgroundColor: '#fafafa' }}>
           <h2 style={{ fontSize: '1.3rem', margin: '0 0 5px 0', color: colorBorde }}>{tituloSecc} ({lista.length})</h2>
           <p style={{ margin: 0, fontSize: '0.9rem', color: '#6b7280' }}>{descripcion}</p>
         </div>
         
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+        {/* Usamos tu clase contenedor-tabla y le sumamos overflow para móviles */}
+        <div className="contenedor-tabla" style={{ overflowX: 'auto', padding: '0' }}>
+          {/* Usamos tu clase tabla-datos y forzamos un ancho mínimo para que en celu se pueda scrollear hacia el costado */}
+          <table className="tabla-datos" style={{ width: '100%', minWidth: '700px', borderCollapse: 'collapse', margin: '0' }}>
             <thead>
-              <tr style={{ borderBottom: '2px solid #e5e7eb', color: '#4b5563', fontSize: '0.9rem' }}>
-                <th style={{ padding: '12px 20px' }}>Nº Pedido</th>
-                <th style={{ padding: '12px 20px', textAlign: 'center' }}>Total</th>
-                <th style={{ padding: '12px 20px', textAlign: 'center' }}>Mover a...</th>
-                <th style={{ padding: '12px 20px', textAlign: 'center' }}>Acciones</th>
+              <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
+                <th className="texto-izq" style={{ padding: '12px 20px' }}>Nº Pedido</th>
+                <th className="texto-centro" style={{ padding: '12px 20px' }}>Total</th>
+                <th className="texto-centro" style={{ padding: '12px 20px' }}>Estado y Logística</th>
+                <th className="texto-centro" style={{ padding: '12px 20px' }}>Acciones</th>
               </tr>
             </thead>
             <tbody>
@@ -164,17 +167,17 @@ export default function Pedidos() {
 
                 return (
                   <tr key={pedido.id_pedido} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                    <td style={{ padding: '12px 20px', fontWeight: 'bold', color: '#1f2937' }}>
+                    <td className="font-fuerte" style={{ padding: '12px 20px' }}>
                       #{String(pedido.id_pedido).slice(0, 8)}...
                     </td>
-                    <td style={{ padding: '12px 20px', textAlign: 'center', fontWeight: 'bold', color: '#10b981' }}>
+                    <td className="texto-centro font-fuerte" style={{ padding: '12px 20px' }}>
                       ${pedido.total_compra || 0}
                     </td>
-                    <td style={{ padding: '12px 20px', textAlign: 'center' }}>
+                    <td className="texto-centro" style={{ padding: '12px 20px' }}>
                       <select
                         value={valorSelect}
                         onChange={(e) => cambiarEstado(pedido.id_pedido, e.target.value, estadoActual)}
-                        style={{ width: '160px', padding: '0.4rem', borderRadius: '6px', border: '1px solid #d1d5db', cursor: 'pointer', backgroundColor: '#f9fafb', fontSize: '0.9rem' }}
+                        style={{ width: '170px', padding: '0.4rem', borderRadius: '4px', border: '1px solid #ccc', cursor: 'pointer', backgroundColor: '#fff' }}
                       >
                         <option value="Pendiente">Pendiente</option>
                         <option value="Pendiente - Mañana">Pendiente - Mañana</option>
@@ -185,10 +188,10 @@ export default function Pedidos() {
                         <option value="Cancelado">Cancelado</option>
                       </select>
                     </td>
-                    <td style={{ padding: '12px 20px', textAlign: 'center' }}>
+                    <td className="texto-centro" style={{ padding: '12px 20px' }}>
                       <Link 
                         href={`/pedidos/${pedido.id_pedido}`} 
-                        style={{ padding: '6px 12px', backgroundColor: '#2563eb', color: '#fff', borderRadius: '6px', textDecoration: 'none', fontSize: '0.85rem', fontWeight: 'bold', display: 'inline-block' }}
+                        style={{ padding: '0.4rem 0.8rem', backgroundColor: '#2563eb', color: '#fff', borderRadius: '4px', textDecoration: 'none', fontSize: '0.9rem', fontWeight: 'bold', display: 'inline-block' }}
                       >
                         👁️ Abrir Pedido
                       </Link>
@@ -204,33 +207,35 @@ export default function Pedidos() {
   };
 
   return (
-    <main style={{ maxWidth: '1100px', margin: '0 auto', padding: '20px', fontFamily: 'system-ui, sans-serif' }}>
+    <main className="contenedor-pagina" style={{ maxWidth: '1100px', margin: '0 auto', padding: '20px' }}>
       
-      {/* BARRA SUPERIOR DE NAVEGACIÓN */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
+      {/* BARRA SUPERIOR DE NAVEGACIÓN Y PERFIL (Responsiva con flexWrap) */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '15px' }}>
         {rolActivo === 'admin' ? (
-          <Link href="/dashboard" style={{ color: '#4b5563', textDecoration: 'none', fontWeight: 'bold', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '5px' }}>
-            <span style={{ fontSize: '1.2rem' }}>🔙</span> Panel Principal
+          <Link href="/dashboard" className="link-volver" style={{ color: '#2563eb', textDecoration: 'none', fontWeight: 'bold' }}>
+            🔙 Volver al panel principal
           </Link>
         ) : (
-          <button onClick={cerrarSesion} style={{ color: '#dc2626', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '1rem' }}>
+          <button onClick={cerrarSesion} className="link-volver" style={{ color: '#dc2626', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '1rem', padding: 0 }}>
             🔒 Cerrar Sesión
           </button>
         )}
-        <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
-          <span style={{ fontSize: '0.9rem', color: '#6b7280', fontWeight: 'bold', backgroundColor: '#e5e7eb', padding: '4px 10px', borderRadius: '20px' }}>
-            👤 {rolActivo === 'admin' ? 'Administrador' : 'Empleado'}
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '0.9rem', color: '#6b7280', fontWeight: 'bold' }}>
+            👤 Modo: {rolActivo === 'admin' ? 'Administrador' : 'Empleado'}
           </span>
-          <button onClick={fetchPedidos} style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #d1d5db', backgroundColor: '#fff', cursor: 'pointer', fontWeight: 'bold' }}>
+          <button onClick={fetchPedidos} className="btn btn-secundario" style={{ padding: '0.5rem 1rem', cursor: 'pointer' }}>
             🔄 Actualizar
           </button>
         </div>
       </div>
 
-      <h1 style={{ fontSize: '2rem', color: '#111827', margin: '0 0 20px 0' }}>Logística y Armado de Pedidos</h1>
+      <div className="encabezado-pagina" style={{ marginBottom: '20px' }}>
+        <h1 className="titulo-pagina" style={{ fontSize: '1.8rem', margin: '0 0 10px 0' }}>🛒 Logística y Armado de Pedidos</h1>
+      </div>
 
-      {/* DISEÑO DE PESTAÑAS SUPERIORES */}
-      <div style={{ display: 'flex', gap: '5px', borderBottom: '2px solid #e5e7eb', marginBottom: '20px', overflowX: 'auto' }}>
+      {/* DISEÑO DE PESTAÑAS SUPERIORES (Con scroll horizontal en celulares) */}
+      <div style={{ display: 'flex', gap: '5px', borderBottom: '2px solid #e5e7eb', marginBottom: '20px', overflowX: 'auto', whiteSpace: 'nowrap', paddingBottom: '2px' }}>
         {['todos', 'full', 'manana', 'tarde'].map((f) => {
           const isActive = filtro === f;
           return (
@@ -246,8 +251,8 @@ export default function Pedidos() {
                 fontSize: '1rem',
                 fontWeight: 'bold',
                 cursor: 'pointer',
-                whiteSpace: 'nowrap',
-                transition: 'all 0.2s'
+                transition: 'all 0.2s',
+                borderRadius: '6px 6px 0 0'
               }}
             >
               {tabsInfo[f].icono} {tabsInfo[f].titulo}
@@ -256,20 +261,20 @@ export default function Pedidos() {
         })}
       </div>
       
-      {/* BANNER CONTEXTUAL DEL TURNO ACTIVO */}
-      <div style={{ backgroundColor: tabActiva.bg, border: `1px solid ${tabActiva.color}`, borderRadius: '12px', padding: '20px', marginBottom: '30px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px' }}>
+      {/* BANNER CONTEXTUAL DEL TURNO ACTIVO (Responsivo) */}
+      <div style={{ backgroundColor: tabActiva.bg, border: `1px solid ${tabActiva.color}`, borderRadius: '8px', padding: '15px 20px', marginBottom: '30px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px' }}>
         <div>
-          <h2 style={{ margin: '0 0 5px 0', color: tabActiva.color, fontSize: '1.4rem' }}>
+          <h2 style={{ margin: '0 0 5px 0', color: tabActiva.color, fontSize: '1.2rem' }}>
             📍 Viendo: {tabActiva.titulo}
           </h2>
-          <p style={{ margin: 0, color: '#4b5563', fontSize: '0.95rem' }}>
+          <p style={{ margin: 0, color: '#4b5563', fontSize: '0.9rem' }}>
             Total de pedidos en esta vista: <strong>{pedidosPorTurno.length}</strong>
           </p>
         </div>
         
         <button 
           onClick={abrirRutaEnMapa}
-          style={{ backgroundColor: '#16a34a', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '1rem', boxShadow: '0 2px 4px rgba(22,163,74,0.3)', display: 'flex', alignItems: 'center', gap: '8px' }}
+          style={{ backgroundColor: '#16a34a', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.95rem', boxShadow: '0 2px 4px rgba(22,163,74,0.3)', display: 'flex', alignItems: 'center', gap: '8px' }}
         >
           🗺️ Generar Ruta de {tabActiva.titulo.replace('Turnos', '').replace('Todos los Pedidos', 'Todo')}
         </button>
@@ -277,7 +282,7 @@ export default function Pedidos() {
 
       {/* CONTENIDO DE LAS TARJETAS (ESTADOS) */}
       {loading ? (
-        <p style={{ textAlign: 'center', color: '#6b7280', padding: '40px' }}>Cargando información del depósito...</p>
+        <p className="texto-cargando">Cargando información del depósito...</p>
       ) : (
         <div>
           {renderTablaPedidos(pedidosPendientes, '⏳ 1. Cola de Espera (Pendientes)', '#ca8a04', 'Pedidos ingresados esperando que un empleado los busque en las estanterías.')}
