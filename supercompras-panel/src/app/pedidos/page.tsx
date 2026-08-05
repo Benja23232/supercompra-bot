@@ -14,7 +14,7 @@ export default function Pedidos() {
   const [pedidos, setPedidos] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   
-  // Estado para controlar la solapa de filtrado por turno/estado
+  // 1. PRIMER FILTRO: Por Turno / Logística
   const [filtro, setFiltro] = useState('todos');
 
   async function fetchPedidos() {
@@ -68,15 +68,14 @@ export default function Pedidos() {
     router.push('/');
   };
 
-  // FUNCIÓN PARA GENERAR RUTA EN GOOGLE MAPS (Filtrada por la solapa actual en Tres Lomas)
+  // FUNCIÓN PARA GENERAR RUTA EN GOOGLE MAPS (Tres Lomas, Buenos Aires)
   const abrirRutaEnMapa = () => {
-    // Tomamos los pedidos filtrados actualmente en pantalla que tengan dirección y no estén entregados/cancelados
-    const pedidosConDireccion = pedidosFiltrados.filter(
+    const pedidosActivos = pedidosPorTurno.filter(
       p => p.direccion && p.direccion.trim() !== '' && p.estado !== 'Entregado' && p.estado !== 'Cancelado'
     );
 
-    if (pedidosConDireccion.length === 0) {
-      alert("No hay pedidos activos con dirección cargada en esta vista para armar la ruta.");
+    if (pedidosActivos.length === 0) {
+      alert("No hay pedidos activos con dirección cargada en este turno para armar la ruta.");
       return;
     }
 
@@ -86,11 +85,11 @@ export default function Pedidos() {
       return `${limpia}, Tres Lomas, Buenos Aires`;
     };
 
-    const origen = encodeURIComponent(formatearDir(pedidosConDireccion[0].direccion));
-    const direccionDestino = pedidosConDireccion[pedidosConDireccion.length - 1].direccion;
+    const origen = encodeURIComponent(formatearDir(pedidosActivos[0].direccion));
+    const direccionDestino = pedidosActivos[pedidosActivos.length - 1].direccion;
     const destinoFinal = encodeURIComponent(formatearDir(direccionDestino));
 
-    const puntosIntermedios = pedidosConDireccion.slice(1, -1);
+    const puntosIntermedios = pedidosActivos.slice(1, -1);
     const waypoints = puntosIntermedios.map(p => encodeURIComponent(formatearDir(p.direccion))).join('|');
 
     let urlMaps = `https://www.google.com/maps/dir/?api=1&origin=${origen}&destination=${destinoFinal}`;
@@ -102,16 +101,19 @@ export default function Pedidos() {
     window.open(urlMaps, '_blank');
   };
 
-  // Lógica para filtrar los pedidos por turnos y estados
-  const pedidosFiltrados = pedidos.filter((pedido) => {
+  // PASO 1: Aplicamos el primer filtro por Turno
+  const pedidosPorTurno = pedidos.filter((pedido) => {
     if (filtro === 'todos') return true;
     if (filtro === 'full') return pedido.estado?.includes('Full');
     if (filtro === 'manana') return pedido.estado?.includes('Mañana');
     if (filtro === 'tarde') return pedido.estado?.includes('Tarde');
-    if (filtro === 'proceso') return pedido.estado === 'En Proceso';
-    if (filtro === 'historial') return pedido.estado === 'Entregado' || pedido.estado === 'Cancelado';
     return true;
   });
+
+  // PASO 2: Dentro del turno seleccionado, dividimos por Estados del pedido
+  const pedidosPendientes = pedidosPorTurno.filter(p => !p.estado || p.estado.includes('Pendiente'));
+  const pedidosEnProceso = pedidosPorTurno.filter(p => p.estado === 'En Proceso');
+  const pedidosFinalizados = pedidosPorTurno.filter(p => p.estado === 'Entregado' || p.estado === 'Cancelado');
 
   if (!autorizado) {
     return (
@@ -121,94 +123,20 @@ export default function Pedidos() {
     );
   }
 
-  return (
-    <main className="contenedor-pagina" style={{ maxWidth: '1000px', margin: '0 auto', padding: '20px' }}>
-      
-      {rolActivo === 'admin' ? (
-        <Link href="/dashboard" className="link-volver" style={{ display: 'inline-block', marginBottom: '15px', color: '#2563eb', textDecoration: 'none' }}>
-          🔙 Volver al panel principal
-        </Link>
-      ) : (
-        <button onClick={cerrarSesion} className="link-volver" style={{ display: 'inline-block', marginBottom: '15px', color: '#dc2626', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: '1rem', fontWeight: 'bold' }}>
-          🔒 Cerrar Sesión
-        </button>
-      )}
-
-      <div className="encabezado-pagina" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
-        <h1 className="titulo-pagina" style={{ fontSize: '1.8rem' }}>🛒 Gestión de Pedidos por Turnos</h1>
-        
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
-          {/* BOTÓN PARA GENERAR LA RUTA SEGÚN EL FILTRO */}
-          <button 
-            onClick={abrirRutaEnMapa}
-            style={{ 
-              backgroundColor: '#16a34a', 
-              color: '#fff', 
-              border: 'none', 
-              padding: '0.5rem 1rem', 
-              borderRadius: '8px', 
-              fontWeight: 'bold', 
-              cursor: 'pointer',
-              fontSize: '0.9rem'
-            }}
-          >
-            🗺️ Generar Ruta (Según Filtro)
-          </button>
-
-          <span style={{ fontSize: '0.9rem', color: '#6b7280', fontWeight: 'bold' }}>
-            👤 Modo: {rolActivo === 'admin' ? 'Administrador' : 'Empleado'}
-          </span>
-          <button onClick={fetchPedidos} className="btn btn-secundario" style={{ padding: '0.5rem 1rem', cursor: 'pointer' }}>
-            🔄 Actualizar
-          </button>
+  // Componente interno para renderizar cada tabla manteniendo los estilos originales
+  const renderTablaPedidos = (lista: any[], tituloSecc: string, colorEncabezado: string) => {
+    if (lista.length === 0) {
+      return (
+        <div style={{ marginBottom: '30px' }}>
+          <h2 style={{ fontSize: '1.3rem', marginBottom: '10px', color: colorEncabezado }}>{tituloSecc} (0)</h2>
+          <p style={{ padding: '1rem', textAlign: 'center', background: '#f9fafb', borderRadius: '8px', color: '#6b7280' }}>No hay pedidos en esta sección para el turno seleccionado.</p>
         </div>
-      </div>
+      );
+    }
 
-      {/* PESTAÑAS / SOLAPAS DE FILTRADO POR TURNOS Y ESTADOS */}
-      <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', flexWrap: 'wrap' }}>
-        <button 
-          onClick={() => setFiltro('todos')}
-          style={{ padding: '8px 16px', borderRadius: '20px', border: '1px solid #d1d5db', background: filtro === 'todos' ? '#2563eb' : '#fff', color: filtro === 'todos' ? '#fff' : '#374151', cursor: 'pointer', fontWeight: 'bold' }}
-        >
-          📋 Todos ({pedidos.length})
-        </button>
-        <button 
-          onClick={() => setFiltro('full')}
-          style={{ padding: '8px 16px', borderRadius: '20px', border: '1px solid #d8b4fe', background: filtro === 'full' ? '#7e22ce' : '#f3e8ff', color: filtro === 'full' ? '#fff' : '#7e22ce', cursor: 'pointer', fontWeight: 'bold' }}
-        >
-          🚀 Envío Full ({pedidos.filter(p => p.estado?.includes('Full')).length})
-        </button>
-        <button 
-          onClick={() => setFiltro('manana')}
-          style={{ padding: '8px 16px', borderRadius: '20px', border: '1px solid #fde047', background: filtro === 'manana' ? '#ca8a04' : '#fef9c3', color: filtro === 'manana' ? '#fff' : '#854d0e', cursor: 'pointer', fontWeight: 'bold' }}
-        >
-          ☀️ Turno Mañana ({pedidos.filter(p => p.estado?.includes('Mañana')).length})
-        </button>
-        <button 
-          onClick={() => setFiltro('tarde')}
-          style={{ padding: '8px 16px', borderRadius: '20px', border: '1px solid #7dd3fc', background: filtro === 'tarde' ? '#0284c7' : '#e0f2fe', color: filtro === 'tarde' ? '#fff' : '#0369a1', cursor: 'pointer', fontWeight: 'bold' }}
-        >
-          🌙 Turno Tarde ({pedidos.filter(p => p.estado?.includes('Tarde')).length})
-        </button>
-        <button 
-          onClick={() => setFiltro('proceso')}
-          style={{ padding: '8px 16px', borderRadius: '20px', border: '1px solid #93c5fd', background: filtro === 'proceso' ? '#1d4ed8' : '#eff6ff', color: filtro === 'proceso' ? '#fff' : '#1e40af', cursor: 'pointer', fontWeight: 'bold' }}
-        >
-          ⚙️ En Proceso ({pedidos.filter(p => p.estado === 'En Proceso').length})
-        </button>
-        <button 
-          onClick={() => setFiltro('historial')}
-          style={{ padding: '8px 16px', borderRadius: '20px', border: '1px solid #86efac', background: filtro === 'historial' ? '#15803d' : '#f0fdf4', color: filtro === 'historial' ? '#fff' : '#166534', cursor: 'pointer', fontWeight: 'bold' }}
-        >
-          📦 Historial ({pedidos.filter(p => p.estado === 'Entregado' || p.estado === 'Cancelado').length})
-        </button>
-      </div>
-      
-      {loading ? (
-        <p className="texto-cargando">Cargando ventas...</p>
-      ) : pedidosFiltrados.length === 0 ? (
-        <p className="texto-cargando" style={{ padding: '2rem', textAlign: 'center', background: '#f9fafb', borderRadius: '8px' }}>No hay pedidos en esta categoría.</p>
-      ) : (
+    return (
+      <div style={{ marginBottom: '35px' }}>
+        <h2 style={{ fontSize: '1.3rem', marginBottom: '10px', color: colorEncabezado }}>{tituloSecc} ({lista.length})</h2>
         <div className="contenedor-tabla">
           <table className="tabla-datos" style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
@@ -220,7 +148,7 @@ export default function Pedidos() {
               </tr>
             </thead>
             <tbody>
-              {pedidosFiltrados.map((pedido) => {
+              {lista.map((pedido) => {
                 const estadoActual = pedido.estado || 'Pendiente';
 
                 return (
@@ -263,6 +191,93 @@ export default function Pedidos() {
               })}
             </tbody>
           </table>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <main className="contenedor-pagina" style={{ maxWidth: '1000px', margin: '0 auto', padding: '20px' }}>
+      
+      {rolActivo === 'admin' ? (
+        <Link href="/dashboard" className="link-volver" style={{ display: 'inline-block', marginBottom: '15px', color: '#2563eb', textDecoration: 'none' }}>
+          🔙 Volver al panel principal
+        </Link>
+      ) : (
+        <button onClick={cerrarSesion} className="link-volver" style={{ display: 'inline-block', marginBottom: '15px', color: '#dc2626', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: '1rem', fontWeight: 'bold' }}>
+          🔒 Cerrar Sesión
+        </button>
+      )}
+
+      <div className="encabezado-pagina" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
+        <h1 className="titulo-pagina" style={{ fontSize: '1.8rem' }}>🛒 Gestión de Pedidos por Turno y Estado</h1>
+        
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* BOTÓN PARA GENERAR LA RUTA DEL TURNO SELECCIONADO */}
+          <button 
+            onClick={abrirRutaEnMapa}
+            style={{ 
+              backgroundColor: '#16a34a', 
+              color: '#fff', 
+              border: 'none', 
+              padding: '0.5rem 1rem', 
+              borderRadius: '8px', 
+              fontWeight: 'bold', 
+              cursor: 'pointer',
+              fontSize: '0.9rem'
+            }}
+          >
+            🗺️ Generar Ruta (Turno Actual)
+          </button>
+
+          <span style={{ fontSize: '0.9rem', color: '#6b7280', fontWeight: 'bold' }}>
+            👤 Modo: {rolActivo === 'admin' ? 'Administrador' : 'Empleado'}
+          </span>
+          <button onClick={fetchPedidos} className="btn btn-secundario" style={{ padding: '0.5rem 1rem', cursor: 'pointer' }}>
+            🔄 Actualizar
+          </button>
+        </div>
+      </div>
+
+      {/* PRIMER FILTRO: SELECCIÓN DE TURNO */}
+      <div style={{ marginBottom: '25px', padding: '15px', background: '#f9fafb', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
+        <p style={{ fontSize: '0.9rem', fontWeight: 'bold', marginBottom: '10px', color: '#374151' }}>1. Filtrar por Turno / Logística:</p>
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+          <button 
+            onClick={() => setFiltro('todos')}
+            style={{ padding: '8px 16px', borderRadius: '20px', border: '1px solid #d1d5db', background: filtro === 'todos' ? '#2563eb' : '#fff', color: filtro === 'todos' ? '#fff' : '#374151', cursor: 'pointer', fontWeight: 'bold' }}
+          >
+            📋 Todos ({pedidos.length})
+          </button>
+          <button 
+            onClick={() => setFiltro('full')}
+            style={{ padding: '8px 16px', borderRadius: '20px', border: '1px solid #d8b4fe', background: filtro === 'full' ? '#7e22ce' : '#f3e8ff', color: filtro === 'full' ? '#fff' : '#7e22ce', cursor: 'pointer', fontWeight: 'bold' }}
+          >
+            🚀 Envío Full ({pedidos.filter(p => p.estado?.includes('Full')).length})
+          </button>
+          <button 
+            onClick={() => setFiltro('manana')}
+            style={{ padding: '8px 16px', borderRadius: '20px', border: '1px solid #fde047', background: filtro === 'manana' ? '#ca8a04' : '#fef9c3', color: filtro === 'manana' ? '#fff' : '#854d0e', cursor: 'pointer', fontWeight: 'bold' }}
+          >
+            ☀️ Turno Mañana ({pedidos.filter(p => p.estado?.includes('Mañana')).length})
+          </button>
+          <button 
+            onClick={() => setFiltro('tarde')}
+            style={{ padding: '8px 16px', borderRadius: '20px', border: '1px solid #7dd3fc', background: filtro === 'tarde' ? '#0284c7' : '#e0f2fe', color: filtro === 'tarde' ? '#fff' : '#0369a1', cursor: 'pointer', fontWeight: 'bold' }}
+          >
+            🌙 Turno Tarde ({pedidos.filter(p => p.estado?.includes('Tarde')).length})
+          </button>
+        </div>
+      </div>
+      
+      {loading ? (
+        <p className="texto-cargando">Cargando ventas...</p>
+      ) : (
+        <div>
+          {/* SEGUNDO NIVEL: DIVISIÓN POR ESTADOS DEL PEDIDO */}
+          {renderTablaPedidos(pedidosPendientes, '⏳ 2.1. Pedidos Pendientes y Turnos Asignados', '#ca8a04')}
+          {renderTablaPedidos(pedidosEnProceso, '⚙️ 2.2. Pedidos en Proceso / Preparación', '#2563eb')}
+          {renderTablaPedidos(pedidosFinalizados, '📦 2.3. Historial (Entregados y Cancelados)', '#16a34a')}
         </div>
       )}
     </main>
