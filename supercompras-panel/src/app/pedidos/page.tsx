@@ -65,7 +65,6 @@ export default function Pedidos() {
     router.push('/');
   };
 
-  // FUNCIÓN PARA GENERAR RUTA EN GOOGLE MAPS (Tres Lomas, Buenos Aires) con los pedidos pendientes/en proceso
   const abrirRutaEnMapa = () => {
     const pedidosActivos = pedidos.filter(p => p.direccion && p.direccion.trim() !== '' && p.estado !== 'Entregado' && p.estado !== 'Cancelado');
 
@@ -96,7 +95,6 @@ export default function Pedidos() {
     window.open(urlMaps, '_blank');
   };
 
-  // SEPARACIÓN DE PEDIDOS POR ESTADO
   const pedidosPendientes = pedidos.filter(p => !p.estado || p.estado.includes('Pendiente'));
   const pedidosEnProceso = pedidos.filter(p => p.estado === 'En Proceso');
   const pedidosFinalizados = pedidos.filter(p => p.estado === 'Entregado' || p.estado === 'Cancelado');
@@ -109,7 +107,6 @@ export default function Pedidos() {
     );
   }
 
-  // Componente interno para renderizar cada tabla de sección
   const renderTablaPedidos = (lista: any[], tituloSecc: string, colorEncabezado: string) => {
     if (lista.length === 0) {
       return (
@@ -124,13 +121,13 @@ export default function Pedidos() {
       <div style={{ marginBottom: '35px' }}>
         <h2 style={{ fontSize: '1.3rem', marginBottom: '10px', color: colorEncabezado }}>{tituloSecc} ({lista.length})</h2>
         <div className="contenedor-tabla">
-          <table className="tabla-datos" style={{ width: '100%', borderCollapse: 'collapse', background: '#fff', borderRadius: '8px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+          <table className="tabla-datos" style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
-              <tr style={{ borderBottom: '2px solid #e5e7eb', backgroundColor: '#f9fafb' }}>
-                <th style={{ textAlign: 'left', padding: '12px' }}>Nº Pedido</th>
-                <th style={{ textAlign: 'center', padding: '12px' }}>Total</th>
-                <th style={{ textAlign: 'center', padding: '12px' }}>Estado y Logística</th>
-                <th style={{ textAlign: 'center', padding: '12px' }}>Acciones</th>
+              <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
+                <th className="texto-izq" style={{ textAlign: 'left', padding: '12px' }}>Nº Pedido</th>
+                <th className="texto-centro" style={{ textAlign: 'center', padding: '12px' }}>Total</th>
+                <th className="texto-centro" style={{ textAlign: 'center', padding: '12px' }}>Estado y Logística</th>
+                <th className="texto-centro" style={{ textAlign: 'center', padding: '12px' }}>Acciones</th>
               </tr>
             </thead>
             <tbody>
@@ -139,15 +136,15 @@ export default function Pedidos() {
 
                 return (
                   <tr key={pedido.id_pedido} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                    <td style={{ padding: '12px', fontWeight: 'bold' }}>
+                    <td className="font-fuerte" style={{ padding: '12px' }}>
                       #{String(pedido.id_pedido).slice(0, 8)}...
                     </td>
                     
-                    <td style={{ textAlign: 'center', padding: '12px', fontWeight: 'bold' }}>
+                    <td className="texto-centro font-fuerte" style={{ textAlign: 'center', padding: '12px' }}>
                       ${pedido.total_compra || 0}
                     </td>
                     
-                    <td style={{ textAlign: 'center', padding: '12px' }}>
+                    <td className="texto-centro" style={{ textAlign: 'center', padding: '12px' }}>
                       <select
                         value={estadoActual}
                         onChange={(e) => cambiarEstado(pedido.id_pedido, e.target.value, estadoActual)}
@@ -163,7 +160,7 @@ export default function Pedidos() {
                       </select>
                     </td>
 
-                    <td style={{ textAlign: 'center', padding: '12px' }}>
+                    <td className="texto-centro" style={{ textAlign: 'center', padding: '12px' }}>
                       <Link 
                         href={`/pedidos/${pedido.id_pedido}`} 
                         style={{ padding: '0.4rem 0.8rem', backgroundColor: '#2563eb', color: '#fff', borderRadius: '4px', textDecoration: 'none', fontSize: '0.9rem', fontWeight: 'bold' }}
