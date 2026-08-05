@@ -71,6 +71,31 @@ export default function Pedidos() {
     router.push('/');
   };
 
+  // NUEVA FUNCIÓN: Generar ruta múltiple en Google Maps con los pedidos filtrados o actuales
+  const abrirRutaEnMapa = () => {
+    // Filtramos solo los pedidos que tienen dirección cargada
+    const pedidosConDireccion = pedidosFiltrados.filter(p => p.direccion && p.direccion.trim() !== '');
+
+    if (pedidosConDireccion.length === 0) {
+      alert("No hay pedidos con dirección cargada en esta vista para armar la ruta.");
+      return;
+    }
+
+    const origen = encodeURIComponent(pedidosConDireccion[0].direccion);
+    const destino = encodeURIComponent(pedidosConDireccion[pedidosConDireccion.length - 1].direccion);
+
+    const puntosIntermedios = pedidosConDireccion.slice(1, -1);
+    const waypoints = puntosIntermedios.map(p => encodeURIComponent(p.direccion)).join('|');
+
+    let urlMaps = `https://www.google.com/maps/dir/?api=1&origin=${origen}&destination=${destino}`;
+    
+    if (waypoints.length > 0) {
+      urlMaps += `&waypoints=${waypoints}`;
+    }
+
+    window.open(urlMaps, '_blank');
+  };
+
   // Lógica para filtrar los pedidos
   const pedidosFiltrados = pedidos.filter((pedido) => {
     if (filtro === 'todos') return true;
@@ -104,7 +129,25 @@ export default function Pedidos() {
 
       <div className="encabezado-pagina" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
         <h1 className="titulo-pagina" style={{ fontSize: '1.8rem' }}>🛒 Gestión de Pedidos</h1>
-        <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
+        
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* BOTÓN NUEVO PARA GENERAR LA RUTA DE REPARTO */}
+          <button 
+            onClick={abrirRutaEnMapa}
+            style={{ 
+              backgroundColor: '#16a34a', 
+              color: '#fff', 
+              border: 'none', 
+              padding: '0.5rem 1rem', 
+              borderRadius: '8px', 
+              fontWeight: 'bold', 
+              cursor: 'pointer',
+              fontSize: '0.9rem'
+            }}
+          >
+            🗺️ Generar Ruta de Reparto
+          </button>
+
           <span style={{ fontSize: '0.9rem', color: '#6b7280', fontWeight: 'bold' }}>
             👤 Modo: {rolActivo === 'admin' ? 'Administrador' : 'Empleado'}
           </span>
@@ -172,7 +215,6 @@ export default function Pedidos() {
                     </td>
                     
                     <td className="texto-centro" style={{ textAlign: 'center', padding: '12px' }}>
-                      {/* Ahora tanto admin como empleado pueden actualizar el estado y queda auditado */}
                       <select
                         value={estadoActual}
                         onChange={(e) => cambiarEstado(pedido.id_pedido, e.target.value, estadoActual)}
