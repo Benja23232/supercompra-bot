@@ -36,15 +36,16 @@ export async function POST(request: Request) {
 
     if (errorDetalles) throw new Error(errorDetalles.message);
 
-    // 3. Sincronizar con Meta (WhatsApp)
+    // 3. Sincronizar con el Catálogo de Meta (WhatsApp)
     const catalogId = process.env.META_CATALOG_ID;
     const accessToken = process.env.META_ACCESS_TOKEN;
+    const phoneNumberId = process.env.META_PHONE_NUMBER_ID;
+
+    const imagenFinal = image_url && image_url.trim() !== '' 
+      ? image_url.trim() 
+      : 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d';
 
     if (catalogId && accessToken) {
-      const imagenFinal = image_url && image_url.trim() !== '' 
-        ? image_url.trim() 
-        : 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d';
-
       const responseMeta = await fetch(`https://graph.facebook.com/v19.0/${catalogId}/products`, {
         method: 'POST',
         headers: {
@@ -53,7 +54,7 @@ export async function POST(request: Request) {
         },
         body: JSON.stringify({
           retailer_id: comboCreado.id_producto,
-          name: nombre.trim(), // Quitamos el emoji por las dudas si Meta se pone estricto
+          name: nombre.trim(),
           description: 'Promo especial / Combo.',
           price: Math.round(Number(precio) * 100),
           currency: 'ARS',
@@ -64,9 +65,62 @@ export async function POST(request: Request) {
       });
 
       const metaData = await responseMeta.json();
-      
       if (!responseMeta.ok) {
         console.error("Error al sincronizar combo con Meta:", metaData);
+      }
+    }
+
+    // 4. 📢 DIFUSIÓN AUTOMÁTICA A TODOS LOS CLIENTES (Con imagen de la promo)
+    if (accessToken && phoneNumberId) {
+      const { data: clientes, error: errorClientes } = await supabase
+        .from('clientes')
+        .select('telefono');
+
+      if (!errorClientes && clientes && clientes.length > 0) {
+        const mensajeCaption = `🔥 ¡NUEVA PROMO DISPONIBLE! 🔥\n\n*${nombre.trim()}*\n💰 Precio: $${precio}\n\n¡Mirala en nuestro catálogo y hacé tu pedido por acá! 🚀`;
+
+        for (const cliente of clientes) {
+          if (cliente.telefono) {
+            try {
+              // Verificamos si tenemos una imagen válida para mandar con multimedia, sino mandamos texto plano
+              if (image_url && image_url.trim() !== '') {
+                await fetch(`https://graph.facebook.com/v19.0/${phoneNumberId}/messages`, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${accessToken}`
+                  },
+                  body: JSON.stringify({
+                    messaging_product: 'whatsapp',
+                    to: cliente.telefono,
+                    type: 'image',
+                    image: {
+                      link: image_url.trim(),
+                      caption: mensajeCaption
+                    }
+                  })
+                });
+              } else {
+                // Si no cargó imagen, va texto directo
+                await fetch(`https://graph.facebook.com/v19.0/${phoneNumberId}/messages`, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${accessToken}`
+                  },
+                  body: JSON.stringify({
+                    messaging_product: 'whatsapp',
+                    to: cliente.telefono,
+                    type: 'text',
+                    text: { body: mensajeCaption }
+                  })
+                });
+              }
+            } catch (errEnvio) {
+              console.error(`Error al enviar difusión a ${cliente.telefono}:`, errEnvio);
+            }
+          }
+        }
       }
     }
 
