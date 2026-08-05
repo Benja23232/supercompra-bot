@@ -41,12 +41,22 @@ export default function Pedidos() {
     }
   }, [router]);
 
-  const cambiarEstado = async (id: any, nuevoEstado: string, estadoAnterior: string) => {
-    if (nuevoEstado === estadoAnterior) return;
+  // ACÁ ESTÁ EL CAMBIO: Rescatamos el turno para que no se borre
+  const cambiarEstado = async (id: any, nuevoEstadoElegido: string, estadoAnterior: string) => {
+    let estadoFinal = nuevoEstadoElegido;
+
+    // Si pasamos a "En Proceso" o "Entregado", le volvemos a pegar el turno que tenía
+    if (nuevoEstadoElegido === 'En Proceso' || nuevoEstadoElegido === 'Entregado') {
+      if (estadoAnterior.includes('Mañana')) estadoFinal = `${nuevoEstadoElegido} - Mañana`;
+      else if (estadoAnterior.includes('Tarde')) estadoFinal = `${nuevoEstadoElegido} - Tarde`;
+      else if (estadoAnterior.includes('Full')) estadoFinal = `${nuevoEstadoElegido} - Full`;
+    }
+
+    if (estadoFinal === estadoAnterior) return;
 
     const { error } = await supabase
       .from('pedidos')
-      .update({ estado: nuevoEstado })
+      .update({ estado: estadoFinal })
       .eq('id_pedido', id);
 
     if (error) {
@@ -56,7 +66,7 @@ export default function Pedidos() {
       await logAuditoria(
         'Pedidos',
         'Cambio de estado',
-        `Actualizó el estado del pedido #${String(id).slice(0, 8)} de "${estadoAnterior}" a "${nuevoEstado}"`
+        `Actualizó el estado del pedido #${String(id).slice(0, 8)} de "${estadoAnterior}" a "${estadoFinal}"`
       );
 
       fetchPedidos(); 
@@ -71,7 +81,7 @@ export default function Pedidos() {
   // FUNCIÓN PARA GENERAR RUTA EN GOOGLE MAPS (Tres Lomas, Buenos Aires)
   const abrirRutaEnMapa = () => {
     const pedidosActivos = pedidosPorTurno.filter(
-      p => p.direccion && p.direccion.trim() !== '' && p.estado !== 'Entregado' && p.estado !== 'Cancelado'
+      p => p.direccion && p.direccion.trim() !== '' && !p.estado?.includes('Entregado') && !p.estado?.includes('Cancelado')
     );
 
     if (pedidosActivos.length === 0) {
@@ -110,10 +120,10 @@ export default function Pedidos() {
     return true;
   });
 
-  // PASO 2: Dentro del turno seleccionado, dividimos por Estados del pedido
+  // PASO 2: ACÁ ESTÁ EL OTRO CAMBIO (Usamos .includes para que detecte "En Proceso - Mañana", etc)
   const pedidosPendientes = pedidosPorTurno.filter(p => !p.estado || p.estado.includes('Pendiente'));
-  const pedidosEnProceso = pedidosPorTurno.filter(p => p.estado === 'En Proceso');
-  const pedidosFinalizados = pedidosPorTurno.filter(p => p.estado === 'Entregado' || p.estado === 'Cancelado');
+  const pedidosEnProceso = pedidosPorTurno.filter(p => p.estado?.includes('En Proceso'));
+  const pedidosFinalizados = pedidosPorTurno.filter(p => p.estado?.includes('Entregado') || p.estado?.includes('Cancelado'));
 
   if (!autorizado) {
     return (
@@ -151,6 +161,12 @@ export default function Pedidos() {
               {lista.map((pedido) => {
                 const estadoActual = pedido.estado || 'Pendiente';
 
+                // Adaptamos el valor del select para que visualmente encaje con las opciones
+                let valorSelect = estadoActual;
+                if (estadoActual.includes('En Proceso')) valorSelect = 'En Proceso';
+                if (estadoActual.includes('Entregado')) valorSelect = 'Entregado';
+                if (estadoActual.includes('Cancelado')) valorSelect = 'Cancelado';
+
                 return (
                   <tr key={pedido.id_pedido} style={{ borderBottom: '1px solid #f3f4f6' }}>
                     <td className="font-fuerte" style={{ padding: '12px' }}>
@@ -163,7 +179,7 @@ export default function Pedidos() {
                     
                     <td className="texto-centro" style={{ textAlign: 'center', padding: '12px' }}>
                       <select
-                        value={estadoActual}
+                        value={valorSelect}
                         onChange={(e) => cambiarEstado(pedido.id_pedido, e.target.value, estadoActual)}
                         style={{ width: '170px', padding: '0.4rem', borderRadius: '4px', border: '1px solid #ccc', cursor: 'pointer', backgroundColor: '#fff' }}
                       >
