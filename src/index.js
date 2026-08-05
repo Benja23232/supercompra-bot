@@ -1,190 +1,317 @@
-const express = require('express');
-const cors = require('cors');
-const axios = require('axios'); // <-- Para enviar las plantillas a Meta
 require('dotenv').config();
+const axios = require('axios');
+const { enviarMensaje } = require('../services/whatsapp');
+const { pool } = require('../services/db'); 
+const Tesseract = require('tesseract.js'); 
 
-// 1. Enchufamos la base de datos y la función de mensajes
-const { pool } = require('./services/db');
-const { enviarMensaje } = require('./services/whatsapp');
-
-// Importamos Mercado Pago
-const { MercadoPagoConfig, Payment } = require('mercadopago');
+const { MercadoPagoConfig, Preference } = require('mercadopago');
 const client = new MercadoPagoConfig({ accessToken: process.env.MP_ACCESS_TOKEN });
-const paymentClient = new Payment(client);
+const preferenceClient = new Preference(client);
 
-// 2. Importamos las rutas de WhatsApp (puertas de entrada)
-const webhookRoutes = require('./routes/webhook');
+const pedidosEsperandoDireccion = new Map(); 
+const pedidosEsperandoTurno = new Map();
+const pedidosEsperandoPago = new Map();
+const pedidosEsperandoComprobante = new Map(); 
 
-// Inicializamos la aplicación
-const app = express();
-const PORT = process.env.PORT || 3000;
+const COSTO_ENVIO = 4000;
+const COSTO_FULL = 1000; // Recargo extra por envío full
 
-// Middlewares
-app.use(cors());
-app.use(express.json());
+const verificarToken = (req, res) => {
+    const verify_token = process.env.WHATSAPP_VERIFY_TOKEN;
+    const mode = req.query['hub.mode'];
+    const token = req.query['hub.verify_token'];
+    const challenge = req.query['hub.challenge'];
 
-// 3. Activamos la ruta para WhatsApp
-app.use('/webhook', webhookRoutes);
-
-// 4. Webhook de Mercado Pago
-app.post('/mercadopago-webhook', async (req, res) => {
-    // A. Devolver el 200 OK rápido para que Mercado Pago no reintente
-    res.sendStatus(200);
-
-    try {
-        const { type, data } = req.body;
-
-        if (type === 'payment' && data && data.id) {
-            console.log(`🔍 Verificando pago ID: ${data.id} en Mercado Pago...`);
-
-            // B. Buscamos los detalles reales de este pago
-            const pagoInfo = await paymentClient.get({ id: data.id });
-
-            if (pagoInfo.status === 'approved') {
-                const idPedido = pagoInfo.external_reference;
-
-                // C. Actualizamos la base de datos
-                await pool.query(
-                    "UPDATE pagos SET estado = 'Aprobado', transaccion_id = $1 WHERE id_pedido = $2",
-                    [pagoInfo.id, idPedido]
-                );
-
-                // D. Buscamos al cliente para avisarle
-                const resPedido = await pool.query(
-                    "SELECT whatsapp_id FROM pedidos WHERE id_pedido = $1",
-                    [idPedido]
-                );
-
-                if (resPedido.rows.length > 0) {
-                    const numeroCliente = resPedido.rows[0].whatsapp_id;
-
-                    const mensajeExito = 
-                        `🎉 ¡Pago recibido con éxito!\n\n` +
-                        `Tu pedido *#${idPedido}* ya está completamente abonado y en preparación. ` +
-                        `Te avisaremos cuando esté listo para ser entregado. ¡Muchas gracias por tu compra!`;
-                    
-                    await enviarMensaje(numeroCliente, mensajeExito);
-                    console.log(`✅ Pago aprobado y cliente notificado para el pedido #${idPedido}`);
-                }
-            }
-        }
-    } catch (error) {
-        console.error("❌ Error procesando webhook de Mercado Pago:", error);
+    if (mode === 'subscribe' && token === verify_token) {
+        res.status(200).send(challenge);
+    } else {
+        res.status(403).send('Token de verificación incorrecto');
     }
-});
+};
 
-// 5. NUEVA PUERTA: Envío de Difusiones / Promociones (Actualizada con Variables y código 'es')
-// NUEVA PUERTA: Obtener lista de productos para el panel
-app.get('/api/productos', async (req, res) => {
+const recibirMensaje = async (req, res) => {
     try {
-        // Usamos el nombre real de tu columna: estado_catalogo = true
-        const result = await pool.query("SELECT id_producto, nombre, precio FROM productos WHERE estado_catalogo = true"); 
-        
-        res.json(result.rows);
-    } catch (error) {
-        console.error("❌ Error al obtener productos:", error);
-        res.status(500).json({ error: 'Error al obtener la lista de productos' });
-    }
-});
-app.post('/api/difusion', async (req, res) => {
-    // Aceptamos también el array de variables desde el panel web
-    const { templateName, variables } = req.body;
+        const message = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
+        if (!message) return res.sendStatus(200);
 
-    if (!templateName) {
-        return res.status(400).json({ error: 'Falta el nombre de la plantilla' });
-    }
+        let numeroCliente = message.from.startsWith("549") ? message.from.replace("549", "54") : message.from;
 
-    try {
-        // A. Buscamos los números únicos directamente desde la base de datos
-        // DISTINCT hace que si un cliente compró 5 veces, su número traiga solo 1 vez.
-        const resPedidos = await pool.query(
-            "SELECT DISTINCT whatsapp_id FROM pedidos WHERE whatsapp_id IS NOT NULL"
-        );
+        // ==========================================
+        // 1. MANEJO DE MENSAJES DE TEXTO
+        // ==========================================
+        if (message.type === 'text') {
+            const textoRecibido = message.text.body;
 
-        const numerosUnicos = resPedidos.rows.map(row => row.whatsapp_id);
+            if (pedidosEsperandoDireccion.has(numeroCliente)) {
+                const datosPedido = pedidosEsperandoDireccion.get(numeroCliente);
+                await pool.query('UPDATE pedidos SET direccion = $1 WHERE id_pedido = $2', [textoRecibido, datosPedido.idPedido]);
 
-        if (numerosUnicos.length === 0) {
-            return res.status(404).json({ error: 'No hay clientes registrados.' });
-        }
+                pedidosEsperandoDireccion.delete(numeroCliente);
+                pedidosEsperandoTurno.set(numeroCliente, datosPedido.idPedido);
 
-        // B. Preparamos las variables para Meta
-        let componentesTemplate = [];
-        
-        // Formateamos las variables si el panel web nos envía alguna
-        if (variables && variables.length > 0) {
-            const parametrosMeta = variables.map(textoVariable => ({
-                type: 'text',
-                text: String(textoVariable)
-            }));
-
-            componentesTemplate = [
-                {
-                    type: 'body',
-                    parameters: parametrosMeta
-                }
-            ];
-        }
-
-        // C. Preparamos credenciales de Meta
-        const token = process.env.WHATSAPP_TOKEN;
-        const phoneId = process.env.WHATSAPP_PHONE_ID;
-
-        let enviados = 0;
-        let fallidos = 0;
-
-        // D. Bucle: Disparamos la plantilla a cada número
-        for (const numero of numerosUnicos) {
-            try {
-                // Armamos el cuerpo básico del mensaje
-                const payloadMeta = {
-                    messaging_product: 'whatsapp',
-                    to: numero,
-                    type: 'template',
-                    template: {
-                        name: templateName,
-                        language: { code: 'es_AR' } // Código oficial para Español genérico
+                const dataBotonesTurno = {
+                    messaging_product: "whatsapp",
+                    to: numeroCliente,
+                    type: "interactive",
+                    interactive: {
+                        type: "button",
+                        body: { text: `📍 ¡Dirección guardada!\n\nSubtotal: $${datosPedido.subtotal}\nEnvío estándar: $${COSTO_ENVIO}\n*Total a abonar: $${datosPedido.total}*\n\n¿En qué turno preferís la entrega?` },
+                        action: {
+                            buttons: [
+                                { type: "reply", reply: { id: "entrega_manana", title: "☀️ Mañana" } },
+                                { type: "reply", reply: { id: "entrega_tarde", title: "🌙 Tarde" } },
+                                { type: "reply", reply: { id: "envio_full", title: "🚀 Full (+$1000)" } }
+                            ]
+                        }
                     }
                 };
+                await axios.post(`https://graph.facebook.com/v17.0/${process.env.WHATSAPP_PHONE_ID}/messages`, dataBotonesTurno, { headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` } });
+                return res.sendStatus(200); 
+            }
 
-                // Si hay variables, las inyectamos al mensaje
-                if (componentesTemplate.length > 0) {
-                    payloadMeta.template.components = componentesTemplate;
-                }
+            const mensajeBienvenida = 
+                "¡Hola! 👋 Bienvenido a Supercompra.\n\n" +
+                "Para ver nuestros productos, tocá el ícono de la tiendita (🏠) que aparece arriba a la derecha. " +
+                "¡Armá tu carrito ahí mismo y envialo por acá para confirmar tu pedido!";
+            await enviarMensaje(numeroCliente, mensajeBienvenida);
+        }
 
-                await axios.post(
-                    `https://graph.facebook.com/v17.0/${phoneId}/messages`,
-                    payloadMeta,
-                    {
-                        headers: { Authorization: `Bearer ${token}` }
+        // ==========================================
+        // 2. MANEJO DE IMÁGENES (OCR - COMPROBANTES)
+        // ==========================================
+        if (message.type === 'image') {
+            if (pedidosEsperandoComprobante.has(numeroCliente)) {
+                const datosPago = pedidosEsperandoComprobante.get(numeroCliente);
+                await enviarMensaje(numeroCliente, "📸 Comprobante recibido. Estoy analizando la imagen con Inteligencia Artificial para verificar el pago, dame un momento...");
+
+                try {
+                    const imageId = message.image.id;
+                    const resMedia = await axios.get(`https://graph.facebook.com/v17.0/${imageId}`, { 
+                        headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` } 
+                    });
+                    
+                    const responseDescarga = await axios.get(resMedia.data.url, { 
+                        responseType: 'arraybuffer', 
+                        headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` } 
+                    });
+                    const imageBuffer = Buffer.from(responseDescarga.data, 'binary');
+
+                    const { data: { text } } = await Tesseract.recognize(imageBuffer, 'spa');
+                    const montoString = String(datosPago.totalEsperado);
+                    
+                    if (text.includes(montoString)) {
+                        await pool.query('UPDATE pagos SET estado = $1 WHERE id_pedido = $2', ['Aprobado', datosPago.idPedido]);
+                        await pool.query('UPDATE pedidos SET estado = $1 WHERE id_pedido = $2', ['En Preparación', datosPago.idPedido]);
+                        
+                        pedidosEsperandoComprobante.delete(numeroCliente);
+                        await enviarMensaje(numeroCliente, `✅ ¡Pago validado automáticamente con éxito!\n\nEl importe de *$${montoString}* fue confirmado. Tu pedido ya pasó al área de preparación para ser despachado.`);
+                    } else {
+                        await enviarMensaje(numeroCliente, `⚠️ No pude validar el monto exacto de *$${montoString}* en la foto del comprobante.\n\nNo te preocupes, un asesor lo revisará manualmente desde el sistema en los próximos minutos para confirmar tu pedido.`);
+                        pedidosEsperandoComprobante.delete(numeroCliente);
                     }
-                );
-                enviados++;
-            } catch (err) {
-                console.error(`Error enviando a ${numero}:`, err.response?.data || err.message);
-                fallidos++;
+
+                } catch (errorOCR) {
+                    console.error("Error analizando imagen:", errorOCR);
+                    await enviarMensaje(numeroCliente, "Tuvimos un problema técnico al leer la foto. Un asesor validará tu pago de forma manual en el sistema.");
+                    pedidosEsperandoComprobante.delete(numeroCliente);
+                }
+                return res.sendStatus(200);
             }
         }
 
-        // E. Devolvemos el reporte a tu panel Vercel
-        res.json({ 
-            mensaje: 'Difusión finalizada con éxito', 
-            total_clientes: numerosUnicos.length,
-            enviados: enviados, 
-            fallidos: fallidos 
-        });
+        // ==========================================
+        // 3. RECEPCIÓN DEL CARRITO (Con validación de stock)
+        // ==========================================
+        if (message.type === 'order') {
+            const itemsCatalogo = message.order.product_items;
+            try {
+                // VERIFICACIÓN DE STOCK PRIMERO
+                let hayProblemasDeStock = false;
+                let mensajeStockFaltante = "¡Hola! Revisamos tu pedido y tenemos un problema con el stock actual de estos productos:\n\n";
+                let subtotal = 0;
+                const detallesParaInsertar = [];
 
-    } catch (error) {
-        console.error('❌ Error en difusión masiva:', error);
-        res.status(500).json({ error: 'Hubo un error en el servidor.' });
+                for (let item of itemsCatalogo) {
+                    const idProductoMeta = item.product_retailer_id;
+                    const quantity = item.quantity;
+                    
+                    // Buscamos precio, nombre y STOCK FÍSICO del producto
+                    const resProd = await pool.query('SELECT nombre, precio, stock_fisico FROM productos WHERE id_producto = $1', [idProductoMeta]);
+                    
+                    if (resProd.rows.length > 0) {
+                        const producto = resProd.rows[0];
+                        const precioActual = producto.precio;
+                        const stockActual = producto.stock_fisico || 0;
+                        const nombreProd = producto.nombre;
+
+                        if (stockActual <= 0) {
+                            mensajeStockFaltante += `❌ *${nombreProd}*: No tenemos stock en este momento.\n`;
+                            hayProblemasDeStock = true;
+                        } else if (stockActual < quantity) {
+                            mensajeStockFaltante += `⚠️ *${nombreProd}*: Solo nos quedan ${stockActual} unidades (pediste ${quantity}).\n`;
+                            hayProblemasDeStock = true;
+                        } else {
+                            // Si hay stock, lo preparamos para insertar
+                            subtotal += (precioActual * quantity);
+                            detallesParaInsertar.push({ id: idProductoMeta, cantidad: quantity, precio: precioActual });
+                        }
+                    } else {
+                        // Si el producto no existe en la BD
+                        mensajeStockFaltante += `❌ Producto no encontrado en nuestro sistema.\n`;
+                        hayProblemasDeStock = true;
+                    }
+                }
+
+                // SI HUBO ALGÚN PROBLEMA DE STOCK, FRENAMOS TODO ACÁ
+                if (hayProblemasDeStock) {
+                    mensajeStockFaltante += "\nPor favor, ingresá nuevamente al catálogo y armá tu carrito ajustando las cantidades. ¡Perdón por las molestias! 🙏";
+                    await enviarMensaje(numeroCliente, mensajeStockFaltante);
+                    return res.sendStatus(200); 
+                }
+
+                // SI HAY STOCK DE TODO, GUARDAMOS EL PEDIDO
+                await pool.query(`INSERT INTO clientes (whatsapp_id, nombre) VALUES ($1, $2) ON CONFLICT (whatsapp_id) DO NOTHING`, [numeroCliente, 'Cliente WhatsApp']);
+                
+                if (detallesParaInsertar.length === 0) return res.sendStatus(200);
+                const totalCarrito = subtotal + COSTO_ENVIO;
+
+                const resPedido = await pool.query(
+                    `INSERT INTO pedidos (whatsapp_id, estado, total_compra) VALUES ($1, $2, $3) RETURNING id_pedido`,
+                    [numeroCliente, 'Pendiente', totalCarrito]
+                );
+                const idNuevoPedido = resPedido.rows[0].id_pedido;
+
+                for (let detalle of detallesParaInsertar) {
+                    await pool.query(
+                        `INSERT INTO detalle_pedidos (id_pedido, id_producto, cantidad, precio_congelado) VALUES ($1, $2, $3, $4)`,
+                        [idNuevoPedido, detalle.id, detalle.cantidad, detalle.precio]
+                    );
+                }
+
+                pedidosEsperandoDireccion.set(numeroCliente, { idPedido: idNuevoPedido, subtotal: subtotal, total: totalCarrito });
+                await enviarMensaje(numeroCliente, "🛒 ¡Recibimos tu pedido y verificamos que hay stock de todo!\n\nPor favor, *escribinos la dirección* a donde querés que lo enviemos (Calle y número).");
+
+            } catch (errorBD) {
+                console.error("Error BD Carrito:", errorBD);
+            }
+        }
+
+        // ==========================================
+        // 4. CAPTURA DE BOTONES Y LISTAS (Turnos y Pagos)
+        // ==========================================
+        if (message.type === 'interactive') {
+            let opcion = message.interactive.type === 'button_reply' ? message.interactive.button_reply.id : message.interactive.list_reply.id;
+
+            if (opcion === 'entrega_manana' || opcion === 'entrega_tarde' || opcion === 'envio_full') {
+                const idPedidoAsociado = pedidosEsperandoTurno.get(numeroCliente);
+                if (!idPedidoAsociado) return await enviarMensaje(numeroCliente, "La sesión expiró, por favor reenviá tu carrito.");
+
+                let nuevoEstado = '';
+                let recargoExtra = 0;
+
+                if (opcion === 'entrega_manana') {
+                    nuevoEstado = 'Pendiente - Mañana';
+                } else if (opcion === 'entrega_tarde') {
+                    nuevoEstado = 'Pendiente - Tarde';
+                } else if (opcion === 'envio_full') {
+                    nuevoEstado = 'Pendiente - Full';
+                    recargoExtra = COSTO_FULL; 
+                }
+
+                if (recargoExtra > 0) {
+                    await pool.query('UPDATE pedidos SET estado = $1, total_compra = total_compra + $2 WHERE id_pedido = $3', [nuevoEstado, recargoExtra, idPedidoAsociado]);
+                } else {
+                    await pool.query('UPDATE pedidos SET estado = $1 WHERE id_pedido = $2', [nuevoEstado, idPedidoAsociado]);
+                }
+
+                const resTotal = await pool.query('SELECT total_compra FROM pedidos WHERE id_pedido = $1', [idPedidoAsociado]);
+                const totalActualizado = resTotal.rows[0].total_compra;
+
+                pedidosEsperandoTurno.delete(numeroCliente);
+                pedidosEsperandoPago.set(numeroCliente, idPedidoAsociado);
+
+                const dataMenuPago = {
+                    messaging_product: "whatsapp",
+                    to: numeroCliente,
+                    type: "interactive",
+                    interactive: {
+                        type: "list",
+                        header: { type: "text", text: "💳 Métodos de Pago" },
+                        body: { text: `Turno agendado. El total de tu pedido es *$${totalActualizado}*.\n\nPor favor elegí cómo preferís abonarlo:` },
+                        footer: { text: "Supercompra" },
+                        action: {
+                            button: "Elegir pago",
+                            sections: [
+                                {
+                                    title: "Opciones disponibles",
+                                    rows: [
+                                        { id: "pago_mp", title: "Mercado Pago", description: "Acreditación automática" },
+                                        { id: "pago_transferencia", title: "Transferencia", description: "Por Alias o CBU" },
+                                        { id: "pago_cuenta_dni", title: "Cuenta DNI", description: "Envío de comprobante" },
+                                        { id: "pago_cuenta", title: "Cuenta Corriente", description: "Anotar en tu cuenta" }
+                                    ]
+                                }
+                            ]
+                        }
+                    }
+                };
+                await axios.post(`https://graph.facebook.com/v17.0/${process.env.WHATSAPP_PHONE_ID}/messages`, dataMenuPago, { headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` } });
+            }
+
+            if (opcion === 'pago_mp' || opcion === 'pago_transferencia' || opcion === 'pago_cuenta_dni' || opcion === 'pago_cuenta') {
+                const idPedidoAsociado = pedidosEsperandoPago.get(numeroCliente);
+                if (!idPedidoAsociado) return await enviarMensaje(numeroCliente, "Hubo un problema con tu sesión de pago.");
+
+                const resPedido = await pool.query('SELECT total_compra FROM pedidos WHERE id_pedido = $1', [idPedidoAsociado]);
+                const totalCompra = resPedido.rows[0].total_compra;
+
+                if (opcion === 'pago_transferencia' || opcion === 'pago_cuenta_dni') {
+                    const nombreMetodo = opcion === 'pago_cuenta_dni' ? 'Cuenta DNI' : 'Transferencia';
+                    
+                    await pool.query(
+                        `INSERT INTO pagos (id_pedido, metodo, estado, monto) VALUES ($1, $2, $3, $4)`,
+                        [idPedidoAsociado, nombreMetodo, 'Pendiente de Verificación', totalCompra]
+                    );
+                    pedidosEsperandoPago.delete(numeroCliente);
+                    pedidosEsperandoComprobante.set(numeroCliente, { idPedido: idPedidoAsociado, totalEsperado: totalCompra });
+                    
+                    await enviarMensaje(numeroCliente, `🏦 Elegiste abonar con ${nombreMetodo}.\n\nEl total a transferir es *$${totalCompra}*.\n\n*Datos bancarios:*\nAlias: *super.compra.ok*\nCBU/CVU: 0000000000000000000000\n\nPor favor, *envianos la foto del comprobante* por este mismo chat para validarlo automáticamente.`);
+
+                } else if (opcion === 'pago_cuenta') {
+                    await pool.query(
+                        `INSERT INTO pagos (id_pedido, metodo, estado, monto) VALUES ($1, $2, $3, $4)`,
+                        [idPedidoAsociado, 'Cuenta Corriente', 'Pendiente de Aprobación', totalCompra]
+                    );
+                    pedidosEsperandoPago.delete(numeroCliente);
+                    await enviarMensaje(numeroCliente, `📝 Registramos tu solicitud para anotar el pedido por *$${totalCompra}*.\n\nEn breve verificaremos tu cuenta. ¡Gracias!`);
+
+                } else if (opcion === 'pago_mp') {
+                    try {
+                        const responsePreference = await preferenceClient.create({
+                            body: {
+                                items: [{ id: String(idPedidoAsociado), title: 'Pedido Supercompra', quantity: 1, unit_price: parseFloat(totalCompra) }],
+                                back_urls: { success: `${process.env.SERVER_URL}/pago-exitoso` },
+                                auto_return: 'approved',
+                                notification_url: `${process.env.SERVER_URL}/mercadopago-webhook`, 
+                                external_reference: String(idPedidoAsociado) 
+                            }
+                        });
+
+                        await pool.query(`INSERT INTO pagos (id_pedido, metodo, estado, transaccion_id, monto) VALUES ($1, $2, $3, $4, $5)`, [idPedidoAsociado, 'Mercado Pago', 'Pendiente', responsePreference.id, totalCompra]);
+                        pedidosEsperandoPago.delete(numeroCliente);
+                        await enviarMensaje(numeroCliente, `💳 Generamos tu link de pago seguro por *$${totalCompra}*.\nHacé clic acá:\n${responsePreference.init_point}`);
+                    } catch (errorMP) {
+                        console.error("Error MP:", errorMP);
+                    }
+                }
+            }
+        }
+        
+        res.sendStatus(200);
+    } catch (e) {
+        console.error('Error general webhook:', e);
+        res.sendStatus(200);
     }
-});
+};
 
-// Ruta de prueba inicial
-app.get('/', (req, res) => {
-    res.send('¡Servidor de Supercompra funcionando al 100%!');
-});
-
-// Arrancamos el servidor
-app.listen(PORT, () => {
-    console.log(`🚀 Servidor central corriendo a la perfección en http://localhost:${PORT}`);
-});
+module.exports = { verificarToken, recibirMensaje };
