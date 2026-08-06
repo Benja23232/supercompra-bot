@@ -16,6 +16,51 @@ const pedidosEsperandoComprobante = new Map();
 const COSTO_ENVIO = 4000;
 const COSTO_FULL = 1000;
 
+// Función auxiliar para generar y enviar la factura en PDF llamando a la API de Next.js
+async function dispararEnvioFactura(idPedido, numeroCliente) {
+    try {
+        // 1. Buscamos los datos del pedido y el nombre del cliente
+        const resPedido = await pool.query(`
+            p.id_pedido, p.total_compra, c.nombre as cliente_nombre 
+            FROM pedidos p 
+            JOIN clientes c ON p.whatsapp_id = c.whatsapp_id 
+            WHERE p.id_pedido = $1
+        `, [idPedido]);
+
+        // Si no lo encuentra directo con el join, probamos buscar el pedido solo
+        const pedidoData = resPedido.rows[0] || (await pool.query('SELECT * FROM pedidos WHERE id_pedido = $1', [idPedido])).rows[0];
+        if (!pedidoData) return;
+
+        // 2. Buscamos el detalle de los productos del pedido
+        const resDetalles = await pool.query(`
+            d.cantidad, d.precio_congelado as precio_unitario, pr.nombre 
+            FROM detalle_pedidos d 
+            JOIN productos pr ON d.id_producto = pr.id_producto 
+            WHERE d.id_pedido = $1
+        `, [idPedido]);
+
+        const productosFormateados = resDetalles.rows.map(row => ({
+            cantidad: row.cantidad,
+            nombre: row.nombre,
+            precio_unitario: row.precio_unitario
+        }));
+
+        // 3. Llamamos a nuestra API interna de Next.js que genera el PDF y lo manda por WhatsApp
+        // Asegurate de que SERVER_URL esté definido en tu .env (ej: http://localhost:3000 o tu dominio de producción)
+        const baseUrl = process.env.SERVER_URL || 'http://localhost:3000';
+        
+        await axios.post(`${baseUrl}/api/factura`, {
+            cliente_telefono: numeroCliente,
+            cliente_nombre: pedidoData.cliente_nombre || 'Consumidor Final',
+            id_pedido: idPedido,
+            total: pedidoData.total_compra,
+            productos: productosFormateados
+        });
+    } catch (errFactura) {
+        console.error("Error al disparar el envío automático de factura:", errFactura);
+    }
+}
+
 const verificarToken = (req, res) => {
     const verify_token = process.env.WHATSAPP_VERIFY_TOKEN;
     const mode = req.query['hub.mode'];
@@ -101,6 +146,10 @@ const recibirMensaje = async (req, res) => {
                         
                         pedidosEsperandoComprobante.delete(numeroCliente);
                         await enviarMensaje(numeroCliente, `✅ ¡Pago validado automáticamente con éxito!\n\nEl importe de *$${montoString}* fue confirmado. Tu pedido ya pasó al área de preparación para ser despachado.`);
+                        
+                        // 📄 DISPARAR FACTURA AUTOMÁTICA POR COMPROBANTE APROBADO
+                        await dispararEnvioFactura(datosPago.idPedido, numeroCliente);
+
                     } else {
                         await enviarMensaje(numeroCliente, `⚠️ No pude validar el monto exacto de *$${montoString}* en la foto del comprobante.\n\nNo te preocupes, un asesor lo revisará manualmente desde el sistema en los próximos minutos para confirmar tu pedido.`);
                         pedidosEsperandoComprobante.delete(numeroCliente);
@@ -128,7 +177,6 @@ const recibirMensaje = async (req, res) => {
                     const idProductoMeta = item.product_retailer_id; 
                     const quantity = item.quantity;
                     
-                    // Consultamos el stock actual y el precio en la base de datos
                     const resProd = await pool.query('SELECT nombre, precio, stock_fisico FROM productos WHERE id_producto = $1', [idProductoMeta]);
                     
                     if (resProd.rows.length > 0) {
@@ -153,14 +201,12 @@ const recibirMensaje = async (req, res) => {
                     }
                 }
 
-                // Si hay falta de stock, avisamos al cliente y cortamos la ejecución sin guardar
                 if (hayProblemasDeStock) {
                     mensajeStockFaltante += "\nPor favor, ingresá nuevamente al catálogo y armá tu carrito ajustando las cantidades. ¡Perdón por las molestias! 🙏";
                     await enviarMensaje(numeroCliente, mensajeStockFaltante);
                     return res.sendStatus(200);
                 }
 
-                // Si todo está OK con el stock, guardamos el cliente y el pedido
                 await pool.query(`INSERT INTO clientes (whatsapp_id, nombre) VALUES ($1, $2) ON CONFLICT (whatsapp_id) DO NOTHING`, [numeroCliente, 'Cliente WhatsApp']);
                 
                 if (detallesParaInsertar.length === 0) return res.sendStatus(200);
