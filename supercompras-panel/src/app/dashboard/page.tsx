@@ -11,6 +11,8 @@ export default function Dashboard() {
   
   // Estado para el efecto hover del borde de la tarjeta de auditorías
   const [hoverAuditoria, setHoverAuditoria] = useState(false);
+  // Estado para el hover de la nueva tarjeta de personal
+  const [hoverPersonal, setHoverPersonal] = useState(false);
 
   useEffect(() => {
     // 1. Buscamos las credenciales en la memoria del navegador
@@ -113,8 +115,26 @@ export default function Dashboard() {
             <h2 className="titulo-tarjeta">Clientes</h2>
             <p className="texto-tarjeta">Base de datos de usuarios, números y contactos frecuentes.</p>
           </Link>
+
+          {/* Tarjeta Personal (NUEVA) */}
+          <Link 
+            href="/empleados" 
+            className="tarjeta tarjeta-verde" 
+            style={{ 
+              borderColor: hoverPersonal ? '#10b981' : '#cbd5e1', 
+              borderWidth: hoverPersonal ? '2px' : '1px',
+              transition: 'all 0.2s ease-in-out',
+              boxShadow: hoverPersonal ? '0 10px 15px -3px rgba(16, 185, 129, 0.15)' : 'none'
+            }}
+            onMouseEnter={() => setHoverPersonal(true)}
+            onMouseLeave={() => setHoverPersonal(false)}
+          >
+            <div className="icono-caja">🧑‍💻</div>
+            <h2 className="titulo-tarjeta">Personal</h2>
+            <p className="texto-tarjeta">Crear nuevas cuentas y gestionar los accesos de tus empleados.</p>
+          </Link>
           
-          {/* Tarjeta Auditorías con borde activo en hover */}
+          {/* Tarjeta Auditorías */}
           <Link 
             href="/auditorias" 
             className="tarjeta tarjeta-azul" 
