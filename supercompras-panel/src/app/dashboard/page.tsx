@@ -21,7 +21,9 @@ export default function Dashboard() {
 
   // ESTADOS PARA ALERTAS
   const [alertaStock, setAlertaStock] = useState<string | null>(null);
-  const [nuevoPedidoNotificacion, setNuevoPedidoNotificacion] = useState<{ cliente: string, total: string } | null>(null);
+  
+  // 1. MODIFICACIÓN: Agregamos el "id" al estado de la notificación
+  const [nuevoPedidoNotificacion, setNuevoPedidoNotificacion] = useState<{ id: string, cliente: string, total: string } | null>(null);
 
   useEffect(() => {
     const rol = localStorage.getItem('rolUsuario');
@@ -35,10 +37,8 @@ export default function Dashboard() {
       setEmailUsuario(email || 'Administrador');
       setAutorizado(true);
       
-      // 1. Revisar alertas de Stock y Vencimientos al cargar
       verificarStockYVencimientos();
 
-      // 2. Suscribirse a nuevos Pedidos en Tiempo Real
       const suscripcionPedidos = supabase
         .channel('custom-insert-channel')
         .on(
@@ -46,13 +46,14 @@ export default function Dashboard() {
           { event: 'INSERT', schema: 'public', table: 'pedidos' },
           (payload) => {
             console.log('¡Nuevo pedido recibido!', payload);
-            // Mostrar notificación con datos del nuevo pedido
+            
+            // 2. MODIFICACIÓN: Capturamos el ID del pedido nuevo
             setNuevoPedidoNotificacion({
+              id: payload.new.id_pedido, // Si tu columna principal se llama distinto (ej: 'id' o 'numero_orden'), cambialo acá
               cliente: payload.new.nombre_cliente || 'Cliente de WhatsApp',
               total: payload.new.total_compra || '0'
             });
 
-            // Ocultar la notificación después de 6 segundos
             setTimeout(() => {
               setNuevoPedidoNotificacion(null);
             }, 6000);
@@ -60,20 +61,17 @@ export default function Dashboard() {
         )
         .subscribe();
 
-      // Limpiar suscripción al salir del componente
       return () => {
         supabase.removeChannel(suscripcionPedidos);
       };
     }
   }, [router]);
 
-  // Función para buscar stock crítico o vencimientos
   const verificarStockYVencimientos = async () => {
-    // Ejemplo: Buscamos productos con stock menor a 5
     const { data, error } = await supabase
       .from('productos')
       .select('*')
-      .lt('stock', 5); // lt = less than (menor que)
+      .lt('stock', 5); 
 
     if (data && data.length > 0) {
       setAlertaStock(`⚠️ Atención: Tenés ${data.length} producto(s) con stock crítico (menos de 5 unidades).`);
@@ -114,7 +112,9 @@ export default function Dashboard() {
           <strong style={{ fontSize: '1.1rem' }}>🔔 ¡Nuevo Pedido Entrante!</strong>
           <span>{nuevoPedidoNotificacion.cliente} acaba de realizar una compra.</span>
           <span>Total: <strong>${nuevoPedidoNotificacion.total}</strong></span>
-          <Link href="/pedidos" style={{ color: '#ecfdf5', textDecoration: 'underline', marginTop: '5px', fontSize: '0.9rem' }}>
+          
+          {/* 3. MODIFICACIÓN: Inyectamos el ID en la URL del botón */}
+          <Link href={`/pedidos/${nuevoPedidoNotificacion.id}`} style={{ color: '#ecfdf5', textDecoration: 'underline', marginTop: '5px', fontSize: '0.9rem' }}>
             Ver pedido ahora
           </Link>
         </div>
@@ -142,7 +142,6 @@ export default function Dashboard() {
           </button>
         </div>
 
-        {/* BANNER DE ALERTA DE STOCK (OPCIÓN 2) */}
         {alertaStock && (
           <div style={{
             background: '#fffbeb',
@@ -205,7 +204,6 @@ export default function Dashboard() {
         </div>
       </div>
       
-      {/* Animación CSS para el cartel emergente */}
       <style dangerouslySetInnerHTML={{__html: `
         @keyframes slideIn {
           from { transform: translateX(100%); opacity: 0; }
