@@ -49,7 +49,7 @@ export default function Dashboard() {
             // Mostrar notificación con datos del nuevo pedido
             setNuevoPedidoNotificacion({
               cliente: payload.new.nombre_cliente || 'Cliente de WhatsApp',
-              total: payload.new.total || '0'
+              total: payload.new.total_compra || '0'
             });
 
             // Ocultar la notificación después de 6 segundos
