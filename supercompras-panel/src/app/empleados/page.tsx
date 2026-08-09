@@ -8,6 +8,7 @@ export default function CrearEmpleado() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [rol, setRol] = useState('empleado'); // <--- NUEVO: Estado para el rol ('empleado' o 'repartidor')
   const [mensaje, setMensaje] = useState('');
   const [error, setError] = useState('');
   const [cargando, setCargando] = useState(false);
@@ -30,17 +31,19 @@ export default function CrearEmpleado() {
       const res = await fetch('/api/crear-usuario', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        // Mandamos también el rol al backend para que lo guarde en Supabase (en user_metadata o tabla de perfiles)
+        body: JSON.stringify({ email, password, rol }),
       });
 
       const data = await res.json();
 
       if (data.success) {
-        setMensaje(`¡Excelente! El empleado ${email} fue creado con éxito.`);
+        setMensaje(`¡Excelente! El usuario ${email} fue creado con éxito como [${rol}].`);
         setEmail('');
         setPassword('');
+        setRol('empleado');
       } else {
-        setError(data.error || 'Hubo un error al registrar el empleado.');
+        setError(data.error || 'Hubo un error al registrar el usuario.');
       }
     } catch (err) {
       setError('Error al intentar conectar con el servidor.');
@@ -58,9 +61,9 @@ export default function CrearEmpleado() {
       </div>
 
       <div style={{ background: '#ffffff', padding: '30px', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', border: '1px solid #e2e8f0' }}>
-        <h1 style={{ marginBottom: '10px', fontSize: '1.5rem', color: '#1e293b' }}>👤 Nuevo Empleado</h1>
+        <h1 style={{ marginBottom: '10px', fontSize: '1.5rem', color: '#1e293b' }}>👤 Nuevo Usuario / Personal</h1>
         <p style={{ marginBottom: '20px', color: '#64748b', fontSize: '0.95rem' }}>
-          Creá una nueva cuenta para que tu personal pueda acceder al sistema.
+          Creá una nueva cuenta y definí qué permisos tendrá en el sistema.
         </p>
 
         {mensaje && (
@@ -83,7 +86,7 @@ export default function CrearEmpleado() {
               required
               value={email} 
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="empleado@supercompra.com"
+              placeholder="personal@supercompra.com"
               style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '1rem', boxSizing: 'border-box' }}
             />
           </div>
@@ -99,6 +102,19 @@ export default function CrearEmpleado() {
               placeholder="Mínimo 6 caracteres"
               style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '1rem', boxSizing: 'border-box' }}
             />
+          </div>
+
+          {/* NUEVO: Selector de Rol */}
+          <div>
+            <label style={{ display: 'block', marginBottom: '5px', fontWeight: '500', color: '#334155' }}>Rol en el Sistema</label>
+            <select
+              value={rol}
+              onChange={(e) => setRol(e.target.value)}
+              style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '1rem', backgroundColor: '#fff', boxSizing: 'border-box' }}
+            >
+              <option value="empleado">📦 Empleado (Depósito / Armado)</option>
+              <option value="repartidor">🛵 Repartidor (Solo vista de rutas)</option>
+            </select>
           </div>
 
           <button 
@@ -118,7 +134,7 @@ export default function CrearEmpleado() {
               transition: 'background-color 0.2s'
             }}
           >
-            {cargando ? 'Guardando...' : 'Crear Empleado'}
+            {cargando ? 'Guardando...' : 'Crear Usuario'}
           </button>
         </form>
       </div>

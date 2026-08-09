@@ -44,10 +44,13 @@ export default function Login() {
     // Registramos la auditoría del inicio de sesión
     await logAuditoria('Seguridad', 'Inicio de sesión', 'Ingresó correctamente al sistema');
 
+    // REDIRECCIÓN INTELIGENTE SEGÚN EL ROL
     if (rolObtenido === 'admin') {
       router.push('/dashboard'); 
+    } else if (rolObtenido === 'repartidor') {
+      router.push('/reparto'); // Redirección exclusiva para el repartidor
     } else {
-      router.push('/pedidos');   
+      router.push('/pedidos'); // Empleados normales u otros roles
     }
   };
 
