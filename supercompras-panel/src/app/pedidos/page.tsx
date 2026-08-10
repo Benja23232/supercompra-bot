@@ -93,7 +93,6 @@ export default function Pedidos() {
     router.push('/');
   };
 
-  // Función para abrir una dirección puntual en Google Maps
   const abrirDireccionIndividual = (direccion: string) => {
     if (!direccion || direccion.trim() === '') {
       alert("Este pedido no tiene dirección cargada.");
@@ -162,8 +161,8 @@ export default function Pedidos() {
 
   if (!autorizado) {
     return (
-      <main style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', backgroundColor: '#f3f4f6' }}>
-        <p style={{ fontSize: '1.2rem', color: '#6b7280', fontWeight: 'bold' }}>Verificando accesos...</p>
+      <main style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', backgroundColor: '#0a0a0a', color: '#9ca3af' }}>
+        <p style={{ fontSize: '1.2rem', fontWeight: 'bold' }}>Verificando acceso...</p>
       </main>
     );
   }
@@ -171,23 +170,25 @@ export default function Pedidos() {
   const renderSeccionPedidos = (lista: any[], tituloSecc: string, descripcion: string) => {
     if (lista.length === 0) {
       return (
-        <div style={{ marginBottom: '30px', padding: '15px', background: '#2e2f31', borderRadius: '8px', border: '1px solid #d1d5db' }}>
-          <h2 style={{ fontSize: '1.4rem', margin: '0 0 5px 0' }}>{tituloSecc} (0)</h2>
-          <p style={{ color: '#6b7280', margin: 0 }}>No hay pedidos en esta etapa para el turno seleccionado.</p>
+        <div style={{ marginBottom: '30px', padding: '30px', backgroundColor: '#121214', borderRadius: '12px', border: '1px solid #27272a', textAlign: 'center' }}>
+          <span style={{ fontSize: '2.5rem', display: 'block', marginBottom: '10px' }}>
+            {tituloSecc.includes('Espera') ? '⏳' : tituloSecc.includes('Proceso') ? '📦' : '✅'}
+          </span>
+          <h2 style={{ fontSize: '1.3rem', margin: '0 0 5px 0', color: '#f4f4f5' }}>{tituloSecc} (0)</h2>
+          <p style={{ color: '#a1a1aa', margin: 0, fontSize: '0.9rem' }}>No hay pedidos en esta etapa para el turno seleccionado.</p>
         </div>
       );
     }
 
     return (
-      <div style={{ marginBottom: '40px' }}>
-        <h2 style={{ fontSize: '1.4rem', margin: '0 0 5px 0' }}>{tituloSecc} ({lista.length})</h2>
-        <p style={{ color: '#6b7280', marginBottom: '15px', marginTop: 0 }}>{descripcion}</p>
+      <div style={{ marginBottom: '40px', width: '100%' }}>
+        <h2 style={{ fontSize: '1.3rem', margin: '0 0 5px 0', color: '#f4f4f5' }}>{tituloSecc} ({lista.length})</h2>
+        <p style={{ color: '#a1a1aa', marginBottom: '15px', marginTop: 0, fontSize: '0.9rem' }}>{descripcion}</p>
         
-        {/* GRILLA DE TARJETAS RESPONSIVA */}
         <div style={{ 
           display: 'grid', 
-          gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', 
-          gap: '15px',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', 
+          gap: '20px', 
           width: '100%' 
         }}>
           {lista.map((pedido) => {
@@ -203,44 +204,49 @@ export default function Pedidos() {
               <div 
                 key={pedido.id_pedido} 
                 style={{ 
-                  backgroundColor: '#242526', 
-                  border: '1px solid #3a3b3c', 
-                  borderRadius: '10px', 
-                  padding: '16px',
-                  boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                  backgroundColor: '#121214', 
+                  border: '1px solid #27272a', 
+                  borderRadius: '12px', 
+                  padding: '20px',
+                  boxShadow: '0 4px 6px rgba(0,0,0,0.4)',
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: '10px'
+                  gap: '14px'
                 }}
               >
                 {/* Cabecera: Nº Pedido y Total */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontWeight: 'bold', fontSize: '1.1rem', color: '#fff' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #27272a', paddingBottom: '10px' }}>
+                  <span style={{ fontWeight: 'bold', fontSize: '1.1rem', color: '#f4f4f5' }}>
                     #{String(pedido.id_pedido).slice(0, 8)}...
                   </span>
-                  <span style={{ fontWeight: 'bold', fontSize: '1.1rem', color: '#10b981' }}>
+                  <span style={{ fontWeight: 'bold', fontSize: '1.2rem', color: '#10b981' }}>
                     ${pedido.total_compra || 0}
                   </span>
                 </div>
 
-                {/* Fecha */}
-                <div style={{ fontSize: '0.85rem', color: '#9ca3af' }}>
-                  📅 {formatearFecha(pedido.fecha_creacion)}
+                {/* Cliente y Fecha */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                  <div style={{ fontSize: '1.05rem', color: '#f4f4f5' }}>
+                    👤 <strong>{pedido.nombre_cliente || 'Cliente'}</strong>
+                  </div>
+                  <div style={{ fontSize: '0.85rem', color: '#a1a1aa', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                    📅 {formatearFecha(pedido.fecha_creacion)}
+                  </div>
                 </div>
 
                 {/* DIRECCIÓN CON ACCESO DIRECTO A MAPS */}
                 <div style={{ 
-                  backgroundColor: '#1a1b1c', 
-                  padding: '8px 10px', 
-                  borderRadius: '6px', 
-                  border: '1px solid #323435',
+                  backgroundColor: '#09090b', 
+                  padding: '10px 12px', 
+                  borderRadius: '8px', 
+                  border: '1px solid #27272a',
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center',
                   gap: '8px'
                 }}>
-                  <div style={{ fontSize: '0.9rem', color: '#e5e7eb', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    📍 <strong>Dirección:</strong> {pedido.direccion ? pedido.direccion : <span style={{ color: '#ef4444' }}>No especificada</span>}
+                  <div style={{ fontSize: '0.9rem', color: '#e4e4e7', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    📍 <strong>Dirección:</strong> {pedido.direccion ? pedido.direccion : <span style={{ color: '#f87171' }}>No especificada</span>}
                   </div>
                   {pedido.direccion && (
                     <button
@@ -250,8 +256,8 @@ export default function Pedidos() {
                         background: '#16a34a',
                         color: '#fff',
                         border: 'none',
-                        borderRadius: '4px',
-                        padding: '4px 8px',
+                        borderRadius: '6px',
+                        padding: '6px 10px',
                         cursor: 'pointer',
                         fontSize: '0.8rem',
                         fontWeight: 'bold',
@@ -265,21 +271,20 @@ export default function Pedidos() {
 
                 {/* Selector de Estado y Logística */}
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.8rem', color: '#9ca3af', marginBottom: '4px' }}>Estado y Logística:</label>
+                  <label style={{ display: 'block', fontSize: '0.85rem', color: '#a1a1aa', marginBottom: '6px' }}>Estado y Logística:</label>
                   <select
                     value={valorSelect}
                     onChange={(e) => cambiarEstado(pedido.id_pedido, e.target.value, estadoActual)}
                     style={{ 
                       width: '100%',
-                      padding: '0.5rem 0.75rem', 
-                      borderRadius: '6px', 
-                      border: '1px solid #cbd5e1', 
+                      padding: '0.6rem 0.75rem', 
+                      borderRadius: '8px', 
+                      border: '1px solid #27272a', 
                       cursor: 'pointer', 
-                      backgroundColor: '#ffffff', 
-                      color: '#1e293b',
+                      backgroundColor: '#09090b', 
+                      color: '#f4f4f5',
                       fontSize: '0.9rem',
                       fontWeight: '500',
-                      boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
                       outline: 'none'
                     }}
                   >
@@ -301,9 +306,9 @@ export default function Pedidos() {
                       flex: 1, 
                       textAlign: 'center', 
                       padding: '10px 8px', 
-                      backgroundColor: '#374151', 
-                      color: '#fff', 
-                      borderRadius: '6px', 
+                      backgroundColor: '#27272a', 
+                      color: '#f4f4f5', 
+                      borderRadius: '8px', 
                       textDecoration: 'none', 
                       fontWeight: 'bold', 
                       fontSize: '0.85rem' 
@@ -319,7 +324,7 @@ export default function Pedidos() {
                       padding: '10px 8px', 
                       backgroundColor: '#2563eb', 
                       color: '#fff', 
-                      borderRadius: '6px', 
+                      borderRadius: '8px', 
                       textDecoration: 'none', 
                       fontWeight: 'bold', 
                       fontSize: '0.85rem' 
@@ -337,81 +342,124 @@ export default function Pedidos() {
   };
 
   return (
-    <main className="contenedor-pagina" style={{ width: '100%', boxSizing: 'border-box', position: 'relative' }}>
+    <main style={{ 
+      padding: '20px', 
+      backgroundColor: '#0a0a0a', 
+      minHeight: '100vh', 
+      color: '#f4f4f5',
+      fontFamily: 'sans-serif',
+      boxSizing: 'border-box',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center'
+    }}>
       
-      {alertaNuevoPedido && (
-        <div style={{
-          position: 'fixed',
-          top: '20px',
-          right: '20px',
-          backgroundColor: '#10b981',
-          color: '#fff',
-          padding: '15px 25px',
-          borderRadius: '8px',
-          boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-          zIndex: 1000,
-          fontWeight: 'bold',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '10px'
-        }}>
-          <span>🔔 ¡Nuevo pedido ingresado en el sistema!</span>
+      <div style={{ width: '100%', maxWidth: '1400px' }}>
+
+        {alertaNuevoPedido && (
+          <div style={{
+            position: 'fixed',
+            top: '20px',
+            right: '20px',
+            backgroundColor: '#10b981',
+            color: '#fff',
+            padding: '15px 25px',
+            borderRadius: '8px',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+            zIndex: 1000,
+            fontWeight: 'bold',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            animation: 'slideIn 0.5s ease-out'
+          }}>
+            <span>🔔 ¡Nuevo pedido ingresado en el sistema!</span>
+          </div>
+        )}
+
+        {/* Navegación Superior */}
+        <div style={{ marginBottom: '20px', display: 'flex', justifyContent: 'space-between', width: '100%' }}>
+          {rolActivo === 'admin' ? (
+            <Link href="/dashboard" style={{ color: '#818cf8', textDecoration: 'none', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '5px' }}>
+              🔙 Volver al panel principal
+            </Link>
+          ) : (
+            <button onClick={cerrarSesion} style={{ background: 'none', border: 'none', color: '#ef4444', fontWeight: 'bold', fontSize: '0.95rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}>
+              🔒 Cerrar Sesión
+            </button>
+          )}
         </div>
-      )}
 
-      {rolActivo === 'admin' ? (
-        <Link href="/dashboard" className="link-volver">
-          🔙 Volver al panel principal
-        </Link>
-      ) : (
-        <button onClick={cerrarSesion} className="link-volver" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
-          🔒 Cerrar Sesión
-        </button>
-      )}
+        {/* Cabecera */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px', marginBottom: '25px', width: '100%' }}>
+          <div>
+            <h1 style={{ margin: 0, fontSize: '1.8rem', color: '#f4f4f5', display: 'flex', alignItems: 'center', gap: '10px' }}>
+              🛒 Logística y Armado de Pedidos
+            </h1>
+          </div>
+          
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            <button 
+              onClick={abrirRutaEnMapa} 
+              style={{ backgroundColor: '#16a34a', color: '#fff', border: 'none', padding: '10px 18px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', gap: '5px', alignItems: 'center', fontSize: '0.9rem' }}
+            >
+              🗺️ Ruta (Turno Actual)
+            </button>
+            <button 
+              onClick={fetchPedidos} 
+              style={{ backgroundColor: '#27272a', color: '#f4f4f5', border: '1px solid #3f3f46', padding: '10px 18px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', gap: '5px', alignItems: 'center', fontSize: '0.9rem' }}
+            >
+              🔄 Sincronizar
+            </button>
+          </div>
+        </div>
 
-      <div className="encabezado-pagina" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px' }}>
-        <h1 className="titulo-pagina" style={{ margin: 0 }}>🛒 Logística y Armado de Pedidos</h1>
+        {/* Filtros */}
+        <div style={{ backgroundColor: '#121214', padding: '20px', borderRadius: '12px', marginBottom: '35px', border: '1px solid #27272a', width: '100%', boxSizing: 'border-box' }}>
+          <h2 style={{ fontSize: '1.05rem', margin: '0 0 15px 0', color: '#f4f4f5', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            📍 1. Filtrar por Turno / Envío
+          </h2>
+          
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            <button onClick={() => setFiltro('todos')} 
+              style={{ flex: 1, minWidth: '130px', padding: '10px 15px', borderRadius: '8px', border: '1px solid #27272a', fontWeight: 'bold', fontSize: '0.9rem', backgroundColor: filtro === 'todos' ? '#4f46e5' : '#18181b', color: 'white', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px' }}>
+              📋 Todos ({pedidos.length})
+            </button>
+            <button onClick={() => setFiltro('full')} 
+              style={{ flex: 1, minWidth: '130px', padding: '10px 15px', borderRadius: '8px', border: '1px solid #27272a', fontWeight: 'bold', fontSize: '0.9rem', backgroundColor: filtro === 'full' ? '#4f46e5' : '#18181b', color: 'white', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px' }}>
+              🚀 Envío Full ({pedidos.filter(p => p.estado?.includes('Full')).length})
+            </button>
+            <button onClick={() => setFiltro('manana')} 
+              style={{ flex: 1, minWidth: '130px', padding: '10px 15px', borderRadius: '8px', border: '1px solid #27272a', fontWeight: 'bold', fontSize: '0.9rem', backgroundColor: filtro === 'manana' ? '#4f46e5' : '#18181b', color: 'white', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px' }}>
+              ☀️ Mañana ({pedidos.filter(p => p.estado?.includes('Mañana')).length})
+            </button>
+            <button onClick={() => setFiltro('tarde')} 
+              style={{ flex: 1, minWidth: '130px', padding: '10px 15px', borderRadius: '8px', border: '1px solid #27272a', fontWeight: 'bold', fontSize: '0.9rem', backgroundColor: filtro === 'tarde' ? '#4f46e5' : '#18181b', color: 'white', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px' }}>
+              🌙 Tarde ({pedidos.filter(p => p.estado?.includes('Tarde')).length})
+            </button>
+          </div>
+        </div>
         
-        <div className="grupo-botones" style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-          <button 
-            onClick={abrirRutaEnMapa} 
-            style={{ backgroundColor: '#16a34a', color: '#fff', border: 'none', padding: '0.5rem 1rem', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}
-          >
-            🗺️ Ruta (Turno Actual)
-          </button>
-          <button onClick={fetchPedidos} className="btn btn-secundario">
-            🔄 Sincronizar
-          </button>
-        </div>
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: '40px', color: '#a1a1aa', fontSize: '1.1rem', fontWeight: '500' }}>
+            Cargando ventas del depósito...
+          </div>
+        ) : (
+          <div style={{ width: '100%' }}>
+            {renderSeccionPedidos(pedidosPendientes, '⏳ Cola de Espera (Pendientes)', 'Pedidos ingresados esperando que un empleado los busque en las estanterías.')}
+            {renderSeccionPedidos(pedidosEnProceso, '⚙️ En Armado / Listos para Enviar', 'Pedidos que ya pasaron por picking y están listos para el repartidor.')}
+            {renderSeccionPedidos(pedidosFinalizados, '📦 Historial Terminado', 'Pedidos ya entregados al cliente o cancelados.')}
+          </div>
+        )}
+
       </div>
 
-      <div style={{ padding: '20px', background: '#2e2f30', borderRadius: '8px', border: '1px solid #e5e7eb', marginBottom: '30px', marginTop: '20px' }}>
-        <h2 style={{ fontSize: '1.2rem', margin: '0 0 15px 0' }}>📍 1. Filtrar por Turno / Envío</h2>
-        <div className="grupo-botones" style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-          <button onClick={() => setFiltro('todos')} className={`btn ${filtro === 'todos' ? 'btn-primario' : 'btn-secundario'}`}>
-            📋 Todos ({pedidos.length})
-          </button>
-          <button onClick={() => setFiltro('full')} className={`btn ${filtro === 'full' ? 'btn-primario' : 'btn-secundario'}`}>
-            🚀 Envío Full ({pedidos.filter(p => p.estado?.includes('Full')).length})
-          </button>
-          <button onClick={() => setFiltro('manana')} className={`btn ${filtro === 'manana' ? 'btn-primario' : 'btn-secundario'}`}>
-            ☀️ Mañana ({pedidos.filter(p => p.estado?.includes('Mañana')).length})
-          </button>
-          <button onClick={() => setFiltro('tarde')} className={`btn ${filtro === 'tarde' ? 'btn-primario' : 'btn-secundario'}`}>
-            🌙 Tarde ({pedidos.filter(p => p.estado?.includes('Tarde')).length})
-          </button>
-        </div>
-      </div>
-      
-      {loading ? (
-        <p className="texto-cargando">Cargando ventas del depósito...</p>
-      ) : (
-        <div style={{ width: '100%' }}>
-          {renderSeccionPedidos(pedidosPendientes, '⏳ Cola de Espera (Pendientes)', 'Pedidos ingresados esperando que un empleado los busque en las estanterías.')}
-          {renderSeccionPedidos(pedidosEnProceso, '⚙️ En Armado / Listos para Enviar', 'Pedidos que ya pasaron por picking y están listos para el repartidor.')}
-          {renderSeccionPedidos(pedidosFinalizados, '📦 Historial Terminado', 'Pedidos ya entregados al cliente o cancelados.')}
-        </div>
-      )}
+      <style dangerouslySetInnerHTML={{__html: `
+        @keyframes slideIn {
+          from { transform: translateX(100%); opacity: 0; }
+          to { transform: translateX(0); opacity: 1; }
+        }
+      `}} />
     </main>
   );
 }

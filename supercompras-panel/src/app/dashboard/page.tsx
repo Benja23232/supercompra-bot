@@ -18,11 +18,10 @@ export default function Dashboard() {
   // Estados para efectos hover
   const [hoverAuditoria, setHoverAuditoria] = useState(false);
   const [hoverPersonal, setHoverPersonal] = useState(false);
+  const [hoverRastreo, setHoverRastreo] = useState(false); // NUEVO ESTADO PARA RASTREO
 
   // ESTADOS PARA ALERTAS
   const [alertaStock, setAlertaStock] = useState<string | null>(null);
-  
-  // 1. MODIFICACIÓN: Agregamos el "id" al estado de la notificación
   const [nuevoPedidoNotificacion, setNuevoPedidoNotificacion] = useState<{ id: string, cliente: string, total: string } | null>(null);
 
   useEffect(() => {
@@ -47,9 +46,8 @@ export default function Dashboard() {
           (payload) => {
             console.log('¡Nuevo pedido recibido!', payload);
             
-            // 2. MODIFICACIÓN: Capturamos el ID del pedido nuevo
             setNuevoPedidoNotificacion({
-              id: payload.new.id_pedido, // Si tu columna principal se llama distinto (ej: 'id' o 'numero_orden'), cambialo acá
+              id: payload.new.id_pedido, 
               cliente: payload.new.nombre_cliente || 'Cliente de WhatsApp',
               total: payload.new.total_compra || '0'
             });
@@ -113,7 +111,6 @@ export default function Dashboard() {
           <span>{nuevoPedidoNotificacion.cliente} acaba de realizar una compra.</span>
           <span>Total: <strong>${nuevoPedidoNotificacion.total}</strong></span>
           
-          {/* 3. MODIFICACIÓN: Inyectamos el ID en la URL del botón */}
           <Link href={`/pedidos/${nuevoPedidoNotificacion.id}`} style={{ color: '#ecfdf5', textDecoration: 'underline', marginTop: '5px', fontSize: '0.9rem' }}>
             Ver pedido ahora
           </Link>
@@ -168,6 +165,16 @@ export default function Dashboard() {
         </div>
 
         <div className="grilla-tarjetas">
+          
+          {/* NUEVA TARJETA: RASTREO EN VIVO */}
+          <Link href="/rastreo" className="tarjeta" 
+            style={{ borderColor: hoverRastreo ? '#ef4444' : '#cbd5e1', borderWidth: hoverRastreo ? '2px' : '1px', transition: 'all 0.2s ease-in-out', boxShadow: hoverRastreo ? '0 10px 15px -3px rgba(239, 68, 68, 0.15)' : 'none' }}
+            onMouseEnter={() => setHoverRastreo(true)} onMouseLeave={() => setHoverRastreo(false)}>
+            <div className="icono-caja">📍</div>
+            <h2 className="titulo-tarjeta" style={{ color: '#ef4444' }}>Rastreo en Vivo</h2>
+            <p className="texto-tarjeta">Monitorear la ubicación GPS de los repartidores en tiempo real.</p>
+          </Link>
+
           <Link href="/productos" className="tarjeta tarjeta-azul">
             <div className="icono-caja">📦</div>
             <h2 className="titulo-tarjeta">Productos</h2>

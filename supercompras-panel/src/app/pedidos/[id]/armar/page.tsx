@@ -36,7 +36,6 @@ export default function ArmarPedido() {
         .single();
 
       if (dataPedido) {
-        // 🚀 AUTOMATIZACIÓN: Si el pedido seguía pendiente, al entrar a armar pasa automáticamente a "En Proceso"
         if (dataPedido.estado?.includes('Pendiente')) {
           let sufijoTurno = '';
           if (dataPedido.estado.includes('Mañana')) sufijoTurno = ' - Mañana';
@@ -50,7 +49,7 @@ export default function ArmarPedido() {
             .update({ estado: nuevoEstadoAuto })
             .eq('id_pedido', id);
 
-          dataPedido.estado = nuevoEstadoAuto; // Actualizamos localmente
+          dataPedido.estado = nuevoEstadoAuto;
           
           await logAuditoria(
             'Depósito', 
@@ -93,7 +92,6 @@ export default function ArmarPedido() {
     setProcesando(true);
 
     try {
-      // 1. Descontamos el stock físico
       for (const item of detalles) {
         const stockActual = item.productos?.stock_fisico || 0;
         const nuevoStock = stockActual - item.cantidad;
@@ -104,7 +102,6 @@ export default function ArmarPedido() {
           .eq('id_producto', item.id_producto);
       }
 
-      // 2. Registramos en la Auditoría
       await logAuditoria(
         'Depósito', 
         'Picking Completado', 
@@ -124,108 +121,153 @@ export default function ArmarPedido() {
 
   if (!autorizado) {
     return (
-      <main style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', backgroundColor: '#f3f4f6' }}>
-        <p style={{ fontSize: '1.2rem', color: '#6b7280', fontWeight: 'bold' }}>Verificando accesos...</p>
+      <main style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', backgroundColor: '#0a0a0a', color: '#9ca3af' }}>
+        <p style={{ fontSize: '1.2rem', fontWeight: 'bold' }}>Verificando accesos...</p>
       </main>
     );
   }
 
-  if (loading) return <p className="texto-cargando">Cargando detalles para armado...</p>;
-  if (!pedido) return <p className="texto-cargando">No se encontró el pedido.</p>;
+  if (loading) return <div style={{ textAlign: 'center', padding: '40px', color: '#a1a1aa', fontSize: '1.1rem', backgroundColor: '#0a0a0a', minHeight: '100vh' }}>Cargando detalles para armado...</div>;
+  if (!pedido) return <div style={{ textAlign: 'center', padding: '40px', color: '#a1a1aa', fontSize: '1.1rem', backgroundColor: '#0a0a0a', minHeight: '100vh' }}>No se encontró el pedido.</div>;
 
   const obtenerBadgeEnvio = (estado: string) => {
-    if (estado?.includes('Full')) return { texto: '🚀 ENVÍO FULL', fondo: '#f3e8ff', color: '#7e22ce', borde: '#d8b4fe' };
-    if (estado?.includes('Mañana')) return { texto: '☀️ TURNO MAÑANA', fondo: '#fef9c3', color: '#854d0e', borde: '#fde047' };
-    if (estado?.includes('Tarde')) return { texto: '🌙 TURNO TARDE', fondo: '#e0f2fe', color: '#0369a1', borde: '#7dd3fc' };
-    return { texto: '📦 ESTÁNDAR', fondo: '#f3f4f6', color: '#374151', borde: '#e5e7eb' };
+    if (estado?.includes('Full')) return { texto: '🚀 ENVÍO FULL', fondo: '#3b0764', color: '#e9d5ff', borde: '#6b21a8' };
+    if (estado?.includes('Mañana')) return { texto: '☀️ TURNO MAÑANA', fondo: '#422006', color: '#fef08a', borde: '#854d0e' };
+    if (estado?.includes('Tarde')) return { texto: '🌙 TURNO TARDE', fondo: '#082f49', color: '#bae6fd', borde: '#0369a1' };
+    return { texto: '📦 ESTÁNDAR', fondo: '#27272a', color: '#f4f4f5', borde: '#3f3f46' };
   };
 
   const badge = obtenerBadgeEnvio(pedido.estado);
   const todosListos = detalles.length > 0 && detalles.every(item => productosMarcados[item.id_producto]);
 
   return (
-    <main className="contenedor-pagina" style={{ maxWidth: '800px', margin: '0 auto', padding: '20px' }}>
-      <Link href="/pedidos" className="link-volver" style={{ display: 'inline-block', marginBottom: '20px', color: '#2563eb', textDecoration: 'none' }}>
-        🔙 Volver a la lista de pedidos
-      </Link>
+    <main style={{ 
+      padding: '20px', 
+      backgroundColor: '#0a0a0a', 
+      minHeight: '100vh', 
+      color: '#f4f4f5',
+      fontFamily: 'sans-serif',
+      boxSizing: 'border-box',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center'
+    }}>
+      <div style={{ width: '100%', maxWidth: '800px' }}>
+        
+        {/* Enlace para Volver */}
+        <div style={{ marginBottom: '20px' }}>
+          <Link href="/pedidos" style={{ color: '#818cf8', textDecoration: 'none', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '5px', width: 'fit-content' }}>
+            🔙 Volver a la lista de pedidos
+          </Link>
+        </div>
 
-      <div className="encabezado-pagina" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
-        <h1 className="titulo-pagina" style={{ fontSize: '1.8rem' }}>Armar Pedido #{String(pedido.id_pedido).slice(0, 8)}</h1>
-        <span style={{ backgroundColor: badge.fondo, color: badge.color, border: `1px solid ${badge.borde}`, padding: '6px 12px', borderRadius: '20px', fontWeight: 'bold', fontSize: '0.9rem' }}>
-          {badge.texto}
-        </span>
-      </div>
-
-      <div style={{ marginBottom: '20px', background: '#18181b', padding: '15px', borderRadius: '8px', border: '1px solid #3f3f46', color: '#fff' }}>
-        <p style={{ margin: '5px 0' }}><strong>Teléfono del cliente:</strong> +{pedido.whatsapp_id}</p>
-        <p style={{ margin: '5px 0' }}><strong>Dirección de entrega:</strong> {pedido.direccion || 'No especificada'}</p>
-        <p style={{ margin: '5px 0' }}><strong>Estado actual:</strong> {pedido.estado} <span style={{ color: '#10b981', fontSize: '0.85rem' }}>(⚡ En proceso automático)</span></p>
-        <p style={{ margin: '5px 0' }}><strong>Total abonado:</strong> ${pedido.total_compra}</p>
-      </div>
-
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px' }}>
-        <h2>Lista de Picking (Marcar productos recolectados):</h2>
-        {todosListos && (
-          <span style={{ color: '#16a34a', fontWeight: 'bold', backgroundColor: '#dcfce7', padding: '4px 10px', borderRadius: '15px', fontSize: '0.9rem' }}>
-            ✅ ¡Pedido completo!
+        {/* Encabezado */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '15px' }}>
+          <h1 style={{ fontSize: '1.8rem', margin: 0, color: '#f4f4f5' }}>
+            Armar Pedido #{String(pedido.id_pedido).slice(0, 8)}
+          </h1>
+          <span style={{ backgroundColor: badge.fondo, color: badge.color, border: `1px solid ${badge.borde}`, padding: '6px 14px', borderRadius: '20px', fontWeight: 'bold', fontSize: '0.85rem' }}>
+            {badge.texto}
           </span>
+        </div>
+
+        {/* Tarjeta de Información del Cliente */}
+        <div style={{ marginBottom: '25px', backgroundColor: '#121214', padding: '20px', borderRadius: '12px', border: '1px solid #27272a', boxShadow: '0 4px 6px rgba(0,0,0,0.4)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <p style={{ margin: 0, color: '#f4f4f5', fontSize: '1.05rem' }}>
+            👤 <strong>Cliente:</strong> {pedido.nombre_cliente || 'Sin nombre'}
+          </p>
+          <p style={{ margin: 0, color: '#f4f4f5', fontSize: '1rem' }}>
+            📞 <strong>Teléfono:</strong> +{pedido.whatsapp_id || pedido.telefono || 'No especificado'}
+          </p>
+          <p style={{ margin: 0, color: '#f4f4f5', fontSize: '1rem' }}>
+            📍 <strong>Dirección de entrega:</strong> {pedido.direccion || 'No especificada'}
+          </p>
+          <p style={{ margin: 0, color: '#f4f4f5', fontSize: '1rem' }}>
+            ⚙️ <strong>Estado actual:</strong> {pedido.estado} <span style={{ color: '#10b981', fontSize: '0.85rem', fontWeight: 'bold' }}>(⚡ En proceso automático)</span>
+          </p>
+          <p style={{ margin: 0, color: '#f4f4f5', fontSize: '1.1rem' }}>
+            💰 <strong>Total abonado:</strong> <span style={{ color: '#10b981', fontWeight: 'bold' }}>${pedido.total_compra}</span>
+          </p>
+        </div>
+
+        {/* Subtítulo de Picking */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+          <h2 style={{ fontSize: '1.2rem', margin: 0, color: '#f4f4f5' }}>Lista de Picking (Marcar productos recolectados):</h2>
+          {todosListos && (
+            <span style={{ color: '#4ade80', fontWeight: 'bold', backgroundColor: '#064e3b', border: '1px solid #065f46', padding: '5px 12px', borderRadius: '15px', fontSize: '0.85rem' }}>
+              ✅ ¡Pedido completo!
+            </span>
+          )}
+        </div>
+
+        {/* Tabla / Contenedor de Productos */}
+        <div style={{ backgroundColor: '#121214', borderRadius: '12px', border: '1px solid #27272a', overflow: 'hidden', marginBottom: '25px', boxShadow: '0 4px 6px rgba(0,0,0,0.4)' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ borderBottom: '1px solid #27272a', backgroundColor: '#18181b', color: '#a1a1aa', fontSize: '0.85rem', textTransform: 'uppercase' }}>
+                <th style={{ textAlign: 'center', padding: '12px', width: '70px' }}>Listo</th>
+                <th style={{ textAlign: 'left', padding: '12px' }}>Producto</th>
+                <th style={{ textAlign: 'center', padding: '12px', width: '100px' }}>Cantidad</th>
+              </tr>
+            </thead>
+            <tbody>
+              {detalles.map((item, index) => {
+                const estaMarcado = productosMarcados[item.id_producto];
+                return (
+                  <tr 
+                    key={index} 
+                    style={{ 
+                      borderBottom: index < detalles.length - 1 ? '1px solid #27272a' : 'none', 
+                      backgroundColor: estaMarcado ? '#09090b' : '#121214', 
+                      opacity: estaMarcado ? 0.5 : 1, 
+                      transition: 'all 0.2s ease-in-out' 
+                    }}
+                  >
+                    <td style={{ textAlign: 'center', padding: '14px' }}>
+                      <input 
+                        type="checkbox" 
+                        checked={estaMarcado || false}
+                        onChange={() => toggleMarca(item.id_producto)}
+                        style={{ width: '20px', height: '20px', cursor: 'pointer', accentColor: '#2563eb' }}
+                      />
+                    </td>
+                    <td style={{ padding: '14px', textDecoration: estaMarcado ? 'line-through' : 'none', color: estaMarcado ? '#71717a' : '#f4f4f5', fontWeight: '500' }}>
+                      {item.productos?.nombre || 'Producto desconocido'}
+                    </td>
+                    <td style={{ textAlign: 'center', padding: '14px', textDecoration: estaMarcado ? 'line-through' : 'none', color: estaMarcado ? '#71717a' : '#f4f4f5' }}>
+                      <strong style={{ fontSize: '1.1rem' }}>{item.cantidad}</strong>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Botón de Confirmación */}
+        {todosListos && (
+          <button 
+            onClick={confirmarArmadoYDescontar}
+            disabled={procesando}
+            style={{ 
+              width: '100%', 
+              padding: '16px', 
+              backgroundColor: procesando ? '#3f3f46' : '#16a34a', 
+              color: '#fff', 
+              border: 'none', 
+              borderRadius: '10px', 
+              fontSize: '1.05rem', 
+              fontWeight: 'bold', 
+              cursor: procesando ? 'not-allowed' : 'pointer',
+              boxShadow: '0 4px 12px rgba(22, 163, 74, 0.3)',
+              transition: 'background-color 0.2s'
+            }}
+          >
+            {procesando ? 'Descontando stock...' : '📦 Confirmar Armado y Descontar Stock'}
+          </button>
         )}
-      </div>
 
-      <div className="contenedor-tabla" style={{ marginTop: '10px', marginBottom: '20px' }}>
-        <table className="tabla-datos" style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
-              <th className="texto-centro" style={{ textAlign: 'center', padding: '10px', width: '60px' }}>Listo</th>
-              <th className="texto-izq" style={{ textAlign: 'left', padding: '10px' }}>Producto</th>
-              <th className="texto-centro" style={{ textAlign: 'center', padding: '10px' }}>Cantidad</th>
-            </tr>
-          </thead>
-          <tbody>
-            {detalles.map((item, index) => {
-              const estaMarcado = productosMarcados[item.id_producto];
-              return (
-                <tr key={index} style={{ borderBottom: '1px solid #f3f4f6', backgroundColor: estaMarcado ? '#f3f4f6' : '#fff', opacity: estaMarcado ? 0.6 : 1, transition: 'all 0.2s ease-in-out' }}>
-                  <td className="texto-centro" style={{ textAlign: 'center', padding: '10px' }}>
-                    <input 
-                      type="checkbox" 
-                      checked={estaMarcado || false}
-                      onChange={() => toggleMarca(item.id_producto)}
-                      style={{ width: '22px', height: '22px', cursor: 'pointer' }}
-                    />
-                  </td>
-                  <td className="font-fuerte" style={{ padding: '10px', textDecoration: estaMarcado ? 'line-through' : 'none', color: '#000' }}>
-                    {item.productos?.nombre || 'Producto desconocido'}
-                  </td>
-                  <td className="texto-centro" style={{ textAlign: 'center', padding: '10px', textDecoration: estaMarcado ? 'line-through' : 'none', color: '#000' }}>
-                    <strong style={{ fontSize: '1.1rem' }}>{item.cantidad}</strong>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
       </div>
-
-      {todosListos && (
-        <button 
-          onClick={confirmarArmadoYDescontar}
-          disabled={procesando}
-          style={{ 
-            width: '100%', 
-            padding: '15px', 
-            backgroundColor: procesando ? '#9ca3af' : '#16a34a', 
-            color: '#fff', 
-            border: 'none', 
-            borderRadius: '8px', 
-            fontSize: '1.1rem', 
-            fontWeight: 'bold', 
-            cursor: procesando ? 'not-allowed' : 'pointer' 
-          }}
-        >
-          {procesando ? 'Descontando stock...' : '📦 Confirmar Armado y Descontar Stock'}
-        </button>
-      )}
     </main>
   );
 }
