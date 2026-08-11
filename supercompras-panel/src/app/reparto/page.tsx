@@ -76,13 +76,15 @@ export default function PantallaRepartidor() {
     setCargando(false);
   };
 
+  // --- FUNCIÓN CORREGIDA ---
   const notificarLlegada = async (pedido: any) => {
-    const tel = pedido.telefono || pedido.telefono_cliente || '';
+    const tel = pedido.whatsapp_id;
     if (tel) {
+      const numeroLimpio = tel.toString().replace(/[^0-9]/g, '');
       const mensaje = encodeURIComponent(`Hola ${pedido.nombre_cliente || 'cliente'}, te escribo de logística porque estoy en camino con tu pedido.`);
-      window.open(`https://wa.me/${tel}?text=${mensaje}`, '_blank');
+      window.open(`https://wa.me/${numeroLimpio}?text=${mensaje}`, '_blank');
     } else {
-      alert(`Enviando WhatsApp a ${pedido.nombre_cliente || 'el cliente'} avisando que estás en camino...`);
+      alert(`No se encontró un número de teléfono cargado.`);
     }
   };
 
@@ -142,7 +144,6 @@ export default function PantallaRepartidor() {
   return (
     <main className="panel-principal" style={{ padding: '15px', minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
       
-      {/* Contenedor centralizado para celulares */}
       <div style={{ width: '100%', maxWidth: '600px' }}>
         
         {/* TOP BAR: GPS y Salir */}
@@ -166,36 +167,22 @@ export default function PantallaRepartidor() {
           </button>
         </div>
 
-        {/* CABECERA (Estilo unificado) */}
+        {/* CABECERA */}
         <div className="cabecera" style={{ textAlign: 'center', marginBottom: '25px' }}>
-          <h1 className="titulo" style={{ fontSize: '1.8rem', marginBottom: '5px' }}>
-            <span className="texto-degradado">Mi Recorrido</span>
-          </h1>
-          <p className="subtitulo" style={{ fontSize: '0.95rem', margin: 0 }}>
-            Seleccioná tu turno para ver las entregas pendientes
-          </p>
+          <h1 className="titulo" style={{ fontSize: '1.8rem', marginBottom: '5px' }}>Mi Recorrido</h1>
+          <p className="subtitulo" style={{ fontSize: '0.95rem', margin: 0 }}>Seleccioná tu turno</p>
         </div>
 
-        {/* TABS DE TURNOS (Diseño limpio) */}
+        {/* TABS DE TURNOS */}
         <div style={{ display: 'flex', gap: '8px', marginBottom: '25px' }}>
-          <button onClick={() => setTurnoActivo('full')} 
-            style={{ flex: 1, padding: '12px 5px', borderRadius: '8px', border: turnoActivo === 'full' ? 'none' : '1px solid #cbd5e1', fontWeight: 'bold', fontSize: '0.95rem', backgroundColor: turnoActivo === 'full' ? '#2563eb' : '#ffffff', color: turnoActivo === 'full' ? '#ffffff' : '#475569', boxShadow: turnoActivo === 'full' ? '0 4px 6px rgba(37, 99, 235, 0.2)' : 'none', transition: 'all 0.2s' }}>
-            🚀 Full
-          </button>
-          <button onClick={() => setTurnoActivo('manana')} 
-            style={{ flex: 1, padding: '12px 5px', borderRadius: '8px', border: turnoActivo === 'manana' ? 'none' : '1px solid #cbd5e1', fontWeight: 'bold', fontSize: '0.95rem', backgroundColor: turnoActivo === 'manana' ? '#f59e0b' : '#ffffff', color: turnoActivo === 'manana' ? '#ffffff' : '#475569', boxShadow: turnoActivo === 'manana' ? '0 4px 6px rgba(245, 158, 11, 0.2)' : 'none', transition: 'all 0.2s' }}>
-            ☀️ Mañana
-          </button>
-          <button onClick={() => setTurnoActivo('tarde')} 
-            style={{ flex: 1, padding: '12px 5px', borderRadius: '8px', border: turnoActivo === 'tarde' ? 'none' : '1px solid #cbd5e1', fontWeight: 'bold', fontSize: '0.95rem', backgroundColor: turnoActivo === 'tarde' ? '#8b5cf6' : '#ffffff', color: turnoActivo === 'tarde' ? '#ffffff' : '#475569', boxShadow: turnoActivo === 'tarde' ? '0 4px 6px rgba(139, 92, 246, 0.2)' : 'none', transition: 'all 0.2s' }}>
-            🌙 Tarde
-          </button>
+          <button onClick={() => setTurnoActivo('full')} style={{ flex: 1, padding: '12px 5px', borderRadius: '8px', border: turnoActivo === 'full' ? 'none' : '1px solid #cbd5e1', fontWeight: 'bold', fontSize: '0.95rem', backgroundColor: turnoActivo === 'full' ? '#2563eb' : '#ffffff', color: turnoActivo === 'full' ? '#ffffff' : '#475569' }}>🚀 Full</button>
+          <button onClick={() => setTurnoActivo('manana')} style={{ flex: 1, padding: '12px 5px', borderRadius: '8px', border: turnoActivo === 'manana' ? 'none' : '1px solid #cbd5e1', fontWeight: 'bold', fontSize: '0.95rem', backgroundColor: turnoActivo === 'manana' ? '#f59e0b' : '#ffffff', color: turnoActivo === 'manana' ? '#ffffff' : '#475569' }}>☀️ Mañana</button>
+          <button onClick={() => setTurnoActivo('tarde')} style={{ flex: 1, padding: '12px 5px', borderRadius: '8px', border: turnoActivo === 'tarde' ? 'none' : '1px solid #cbd5e1', fontWeight: 'bold', fontSize: '0.95rem', backgroundColor: turnoActivo === 'tarde' ? '#8b5cf6' : '#ffffff', color: turnoActivo === 'tarde' ? '#ffffff' : '#475569' }}>🌙 Tarde</button>
         </div>
 
         {/* BOTÓN INICIAR RUTA GPS */}
         {pedidosFiltrados.length > 0 && (
-          <button onClick={abrirRutaCompletaEnMapa} 
-            style={{ width: '100%', padding: '15px', backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '10px', fontWeight: 'bold', fontSize: '1.1rem', marginBottom: '25px', display: 'flex', justifyContent: 'center', gap: '8px', boxShadow: '0 4px 6px rgba(16, 185, 129, 0.2)', cursor: 'pointer' }}>
+          <button onClick={abrirRutaCompletaEnMapa} style={{ width: '100%', padding: '15px', backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '10px', fontWeight: 'bold', fontSize: '1.1rem', marginBottom: '25px', cursor: 'pointer' }}>
             🗺️ INICIAR RUTA EN GPS ({pedidosFiltrados.length})
           </button>
         )}
@@ -204,63 +191,35 @@ export default function PantallaRepartidor() {
         {cargando ? (
           <div style={{ textAlign: 'center', color: '#64748b', padding: '20px', fontWeight: '500' }}>Cargando ruta...</div>
         ) : pedidosFiltrados.length === 0 ? (
-          <div style={{ textAlign: 'center', backgroundColor: '#ffffff', padding: '40px 20px', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
-            <span style={{ fontSize: '3rem', display: 'block', marginBottom: '10px' }}>🎉</span>
-            <h2 style={{ color: '#1e293b', margin: '0 0 5px 0' }}>¡Todo entregado!</h2>
-            <p style={{ color: '#64748b', margin: 0 }}>No hay pedidos pendientes en este turno.</p>
-          </div>
+          <div style={{ color: 'black', textAlign: 'center', backgroundColor: '#ffffff', padding: '40px 20px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>🎉 ¡Todo entregado!</div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
             {pedidosFiltrados.map((pedido, index) => (
-              
-              // TARJETA DE PEDIDO
               <div key={pedido.id_pedido} style={{ backgroundColor: '#ffffff', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
-                
-                {/* Cabecera Tarjeta */}
                 <h3 style={{ margin: '0 0 10px 0', fontSize: '1.05rem', color: '#64748b', borderBottom: '1px solid #f1f5f9', paddingBottom: '8px', display: 'flex', justifyContent: 'space-between' }}>
                   <span>📦 Entrega #{index + 1}</span>
-                  <span style={{ fontSize: '0.85rem', color: '#94a3b8' }}>ID: #{String(pedido.id_pedido).slice(0, 6)}</span>
+                  <span style={{ fontSize: '0.85rem' }}>ID: #{String(pedido.id_pedido).slice(0, 6)}</span>
                 </h3>
                 
-                {/* Datos del Cliente y Teléfono */}
+                {/* --- RENDERIZADO CORREGIDO --- */}
                 <div style={{ marginBottom: '12px' }}>
-                  <p style={{ margin: '0 0 4px 0', color: '#1e293b', fontSize: '1.15rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    👤 <strong>{pedido.nombre_cliente || 'Cliente sin nombre'}</strong>
+                  <p style={{ margin: '0 0 4px 0', color: '#1e293b', fontSize: '1.15rem', fontWeight: 'bold' }}>
+                    👤 {pedido.nombre_cliente || 'Cliente sin nombre'}
                   </p>
-                  <p style={{ margin: 0, color: '#475569', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    📞 <span>{pedido.telefono || pedido.telefono_cliente || 'Sin teléfono cargado'}</span>
+                  <p style={{ margin: 0, color: '#475569', fontSize: '0.95rem' }}>
+                    📞 {pedido.whatsapp_id ? `+${pedido.whatsapp_id}` : 'Sin teléfono cargado'}
                   </p>
                 </div>
 
-                <p style={{ margin: '0 0 15px 0', color: '#64748b', fontSize: '0.95rem' }}>
-                  💰 Total a cobrar: <span style={{ color: '#10b981', fontWeight: 'bold', fontSize: '1.1rem' }}>${pedido.total_compra}</span>
-                </p>
-
-                {/* Dirección y Mapa */}
-                <div style={{ backgroundColor: '#f8fafc', padding: '12px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', border: '1px solid #e2e8f0' }}>
-                  <span style={{ color: '#334155', fontSize: '0.95rem', flex: 1, fontWeight: '500' }}>
-                    📍 {pedido.direccion || 'Sin dirección'}
-                  </span>
-                  {pedido.direccion && (
-                    <button onClick={() => abrirMapaIndividual(pedido.direccion)} 
-                      style={{ backgroundColor: '#e2e8f0', color: '#475569', border: 'none', padding: '8px 12px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.85rem' }}>
-                      Solo Mapa
-                    </button>
-                  )}
+                <div style={{ backgroundColor: '#f8fafc', padding: '12px', borderRadius: '8px', marginBottom: '15px', border: '1px solid #e2e8f0' }}>
+                  <p style={{ color:'black', margin: '0 0 5px 0', fontSize: '0.95rem' }}>📍 {pedido.direccion || 'Sin dirección'}</p>
+                  {pedido.direccion && <button onClick={() => abrirMapaIndividual(pedido.direccion)} style={{ backgroundColor: '#e2e8f0', border: 'none', padding: '8px 12px', borderRadius: '6px', fontSize: '0.85rem', cursor: 'pointer' }}>Solo Mapa</button>}
                 </div>
 
-                {/* Botones de Acción */}
                 <div style={{ display: 'flex', gap: '10px' }}>
-                  <button onClick={() => notificarLlegada(pedido)} 
-                    style={{ flex: 1, backgroundColor: '#f59e0b', color: 'white', border: 'none', padding: '12px', borderRadius: '8px', fontWeight: 'bold', fontSize: '0.95rem', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '5px', cursor: 'pointer' }}>
-                    🔔 Avisar
-                  </button>
-                  <button onClick={() => marcarEntregado(pedido)} 
-                    style={{ flex: 1, backgroundColor: '#2563eb', color: 'white', border: 'none', padding: '12px', borderRadius: '8px', fontWeight: 'bold', fontSize: '0.95rem', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '5px', cursor: 'pointer' }}>
-                    ✅ Entregado
-                  </button>
+                  <button onClick={() => notificarLlegada(pedido)} style={{ flex: 1, backgroundColor: '#f59e0b', color: 'white', border: 'none', padding: '12px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>🔔 Avisar</button>
+                  <button onClick={() => marcarEntregado(pedido)} style={{ flex: 1, backgroundColor: '#2563eb', color: 'white', border: 'none', padding: '12px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>✅ Entregado</button>
                 </div>
-
               </div>
             ))}
           </div>
