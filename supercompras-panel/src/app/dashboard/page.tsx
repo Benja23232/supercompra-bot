@@ -18,11 +18,20 @@ export default function Dashboard() {
   // Estados para efectos hover
   const [hoverAuditoria, setHoverAuditoria] = useState(false);
   const [hoverPersonal, setHoverPersonal] = useState(false);
-  const [hoverRastreo, setHoverRastreo] = useState(false); // NUEVO ESTADO PARA RASTREO
+  const [hoverRastreo, setHoverRastreo] = useState(false); 
 
   // ESTADOS PARA ALERTAS
   const [alertaStock, setAlertaStock] = useState<string | null>(null);
   const [nuevoPedidoNotificacion, setNuevoPedidoNotificacion] = useState<{ id: string, cliente: string, total: string } | null>(null);
+
+  // NUEVO: Función para reproducir el sonido
+  const reproducirAlerta = () => {
+    // Busca el archivo en la carpeta public
+    const audio = new Audio('/notificacion.mp3'); 
+    audio.play().catch((error) => {
+      console.warn("Autoplay bloqueado por el navegador. El usuario debe interactuar con la página primero.", error);
+    });
+  };
 
   useEffect(() => {
     const rol = localStorage.getItem('rolUsuario');
@@ -45,6 +54,9 @@ export default function Dashboard() {
           { event: 'INSERT', schema: 'public', table: 'pedidos' },
           (payload) => {
             console.log('¡Nuevo pedido recibido!', payload);
+            
+            // NUEVO: Llamamos a la función de sonido acá
+            reproducirAlerta();
             
             setNuevoPedidoNotificacion({
               id: payload.new.id_pedido, 
@@ -166,7 +178,6 @@ export default function Dashboard() {
 
         <div className="grilla-tarjetas">
           
-          {/* NUEVA TARJETA: RASTREO EN VIVO */}
           <Link href="/rastreo" className="tarjeta" 
             style={{ borderColor: hoverRastreo ? '#ef4444' : '#cbd5e1', borderWidth: hoverRastreo ? '2px' : '1px', transition: 'all 0.2s ease-in-out', boxShadow: hoverRastreo ? '0 10px 15px -3px rgba(239, 68, 68, 0.15)' : 'none' }}
             onMouseEnter={() => setHoverRastreo(true)} onMouseLeave={() => setHoverRastreo(false)}>
