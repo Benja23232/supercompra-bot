@@ -19,8 +19,9 @@ const COSTO_FULL = 1000;
 // Función auxiliar para generar y enviar la factura en PDF llamando a la API de Next.js
 async function dispararEnvioFactura(idPedido, numeroCliente) {
     try {
+        // CORREGIDO: Se agregó el SELECT
         const resPedido = await pool.query(`
-            p.id_pedido, p.total_compra, c.nombre as cliente_nombre 
+            SELECT p.id_pedido, p.total_compra, c.nombre as cliente_nombre 
             FROM pedidos p 
             JOIN clientes c ON p.whatsapp_id = c.whatsapp_id 
             WHERE p.id_pedido = $1
@@ -29,8 +30,9 @@ async function dispararEnvioFactura(idPedido, numeroCliente) {
         const pedidoData = resPedido.rows[0] || (await pool.query('SELECT * FROM pedidos WHERE id_pedido = $1', [idPedido])).rows[0];
         if (!pedidoData) return;
 
+        // CORREGIDO: Se agregó el SELECT
         const resDetalles = await pool.query(`
-            d.cantidad, d.precio_congelado as precio_unitario, pr.nombre 
+            SELECT d.cantidad, d.precio_congelado as precio_unitario, pr.nombre 
             FROM detalle_pedidos d 
             JOIN productos pr ON d.id_producto = pr.id_producto 
             WHERE d.id_pedido = $1
