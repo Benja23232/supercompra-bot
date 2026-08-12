@@ -76,13 +76,16 @@ const recibirMensaje = async (req, res) => {
 
         let numeroCliente = message.from.startsWith("549") ? message.from.replace("549", "54") : message.from;
 
-        // 1. MANEJO DE MENSAJES DE TEXTO
-        if (message.type === 'text') {
-            const textoRecibido = message.text.body;
-
+        // --- NUEVO: MANEJO DE UBICACIÓN (GPS WHATSAPP) ---
+        if (message.type === 'location') {
             if (pedidosEsperandoDireccion.has(numeroCliente)) {
+                const lat = message.location.latitude;
+                const lng = message.location.longitude;
+                // Guardamos directamente el link de Google Maps con las coordenadas exactas
+                const direccionGPS = `https://maps.google.com/?q=${lat},${lng}`;
+
                 const datosPedido = pedidosEsperandoDireccion.get(numeroCliente);
-                await pool.query('UPDATE pedidos SET direccion = $1 WHERE id_pedido = $2', [textoRecibido, datosPedido.idPedido]);
+                await pool.query('UPDATE pedidos SET direccion = $1 WHERE id_pedido = $2', [direccionGPS, datosPedido.idPedido]);
 
                 pedidosEsperandoDireccion.delete(numeroCliente);
                 pedidosEsperandoTurno.set(numeroCliente, datosPedido.idPedido);
@@ -93,7 +96,46 @@ const recibirMensaje = async (req, res) => {
                     type: "interactive",
                     interactive: {
                         type: "button",
-                        body: { text: `📍 ¡Dirección guardada!\n\nSubtotal: $${datosPedido.subtotal}\nEnvío estándar: $${COSTO_ENVIO}\n*Total a abonar: $${datosPedido.total}*\n\n¿En qué turno preferís la entrega?` },
+                        body: { text: `📍 ¡Ubicación GPS guardada con éxito!\n\nSubtotal: $${datosPedido.subtotal}\nEnvío estándar: $${COSTO_ENVIO}\n*Total a abonar: $${datosPedido.total}*\n\n¿En qué turno preferís la entrega?` },
+                        action: {
+                            buttons: [
+                                { type: "reply", reply: { id: "entrega_manana", title: "☀️ Mañana" } },
+                                { type: "reply", reply: { id: "entrega_tarde", title: "🌙 Tarde" } },
+                                { type: "reply", reply: { id: "envio_full", title: "🚀 Full (+$1000)" } }
+                            ]
+                        }
+                    }
+                };
+                await axios.post(`https://graph.facebook.com/v17.0/${process.env.WHATSAPP_PHONE_ID}/messages`, dataBotonesTurno, { headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` } });
+                return res.sendStatus(200);
+            }
+        }
+
+        // 1. MANEJO DE MENSAJES DE TEXTO (AHORA AUTOFLETA "TRES LOMAS")
+        if (message.type === 'text') {
+            const textoRecibido = message.text.body;
+
+            if (pedidosEsperandoDireccion.has(numeroCliente)) {
+                let direccionMejorada = textoRecibido.trim();
+                
+                // Si el cliente no aclara la ciudad, se la inyectamos para salvar a Google Maps
+                if (!direccionMejorada.toLowerCase().includes('tres lomas')) {
+                    direccionMejorada = `${direccionMejorada}, Tres Lomas`;
+                }
+
+                const datosPedido = pedidosEsperandoDireccion.get(numeroCliente);
+                await pool.query('UPDATE pedidos SET direccion = $1 WHERE id_pedido = $2', [direccionMejorada, datosPedido.idPedido]);
+
+                pedidosEsperandoDireccion.delete(numeroCliente);
+                pedidosEsperandoTurno.set(numeroCliente, datosPedido.idPedido);
+
+                const dataBotonesTurno = {
+                    messaging_product: "whatsapp",
+                    to: numeroCliente,
+                    type: "interactive",
+                    interactive: {
+                        type: "button",
+                        body: { text: `📍 ¡Dirección guardada! (${direccionMejorada})\n\nSubtotal: $${datosPedido.subtotal}\nEnvío estándar: $${COSTO_ENVIO}\n*Total a abonar: $${datosPedido.total}*\n\n¿En qué turno preferís la entrega?` },
                         action: {
                             buttons: [
                                 { type: "reply", reply: { id: "entrega_manana", title: "☀️ Mañana" } },
@@ -221,7 +263,9 @@ const recibirMensaje = async (req, res) => {
                 }
 
                 pedidosEsperandoDireccion.set(numeroCliente, { idPedido: idNuevoPedido, subtotal: subtotal, total: totalCarrito });
-                await enviarMensaje(numeroCliente, "🛒 ¡Recibimos tu pedido y verificamos que hay stock de todo!\n\nPor favor, *escribinos la dirección* a donde querés que lo enviemos (Calle y número).");
+                
+                // --- CAMBIO: Actualizamos el mensaje pidiendo texto o ubicación de WhatsApp ---
+                await enviarMensaje(numeroCliente, "🛒 ¡Recibimos tu pedido y verificamos que hay stock de todo!\n\nPara el envío, podés hacer dos cosas:\n1️⃣ *Escribirnos la dirección* (Ej: Belgrano 1024)\n2️⃣ Tocar el 📎 (clip) abajo y enviarnos tu *Ubicación actual* de WhatsApp para mayor precisión.");
 
             } catch (errorBD) {
                 console.error("Error BD Carrito:", errorBD);
@@ -260,7 +304,6 @@ const recibirMensaje = async (req, res) => {
                 pedidosEsperandoTurno.delete(numeroCliente);
                 pedidosEsperandoPago.set(numeroCliente, idPedidoAsociado);
 
-                // --- CAMBIO: Actualizamos la lista de botones para incluir Efectivo en vez de Cuenta Corriente ---
                 const dataMenuPago = {
                     messaging_product: "whatsapp",
                     to: numeroCliente,
@@ -289,7 +332,6 @@ const recibirMensaje = async (req, res) => {
                 await axios.post(`https://graph.facebook.com/v17.0/${process.env.WHATSAPP_PHONE_ID}/messages`, dataMenuPago, { headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` } });
             }
 
-            // --- CAMBIO: Ajustamos la lógica para atajar la nueva opción "pago_efectivo" ---
             if (opcion === 'pago_mp' || opcion === 'pago_transferencia' || opcion === 'pago_cuenta_dni' || opcion === 'pago_efectivo') {
                 const idPedidoAsociado = pedidosEsperandoPago.get(numeroCliente);
                 if (!idPedidoAsociado) return await enviarMensaje(numeroCliente, "Hubo un problema con tu sesión de pago.");
@@ -311,20 +353,17 @@ const recibirMensaje = async (req, res) => {
                     await enviarMensaje(numeroCliente, `🏦 Elegiste abonar con ${nombreMetodo}.\n\nEl total a transferir es *$${totalCompra}*.\n\n*Datos bancarios:*\nAlias: *super.compra.ok*\nCBU/CVU: 0000000000000000000000\n\nPor favor, *envianos la foto del comprobante* por este mismo chat para validarlo automáticamente.`);
 
                 } else if (opcion === 'pago_efectivo') {
-                    // LÓGICA PARA EFECTIVO: Aprueba el pago de una y manda a preparar el pedido
                     await pool.query(
                         `INSERT INTO pagos (id_pedido, metodo, estado, monto) VALUES ($1, $2, $3, $4)`,
                         [idPedidoAsociado, 'Efectivo', 'A Cobrar (Efectivo)', totalCompra]
                     );
                     
-                    // IMPORTANTE: Lo pasamos directo a "En Preparación" para que el equipo lo arme
                     await pool.query('UPDATE pedidos SET estado = $1 WHERE id_pedido = $2', ['En Preparación', idPedidoAsociado]);
                     
                     pedidosEsperandoPago.delete(numeroCliente);
                     
                     await enviarMensaje(numeroCliente, `💵 ¡Excelente! Registramos tu pedido para pagar en efectivo al recibir.\n\nTené preparados *$${totalCompra}*.\n\nYa pasamos tu pedido al área de preparación para armarlo.`);
                     
-                    // También disparamos la factura para que le quede como remito/ticket
                     await dispararEnvioFactura(idPedidoAsociado, numeroCliente);
 
                 } else if (opcion === 'pago_mp') {
