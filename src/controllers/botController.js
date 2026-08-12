@@ -19,7 +19,6 @@ const COSTO_FULL = 1000;
 // Función auxiliar para generar y enviar la factura en PDF llamando a la API de Next.js
 async function dispararEnvioFactura(idPedido, numeroCliente) {
     try {
-        // 1. Buscamos los datos del pedido y el nombre del cliente
         const resPedido = await pool.query(`
             p.id_pedido, p.total_compra, c.nombre as cliente_nombre 
             FROM pedidos p 
@@ -27,11 +26,9 @@ async function dispararEnvioFactura(idPedido, numeroCliente) {
             WHERE p.id_pedido = $1
         `, [idPedido]);
 
-        // Si no lo encuentra directo con el join, probamos buscar el pedido solo
         const pedidoData = resPedido.rows[0] || (await pool.query('SELECT * FROM pedidos WHERE id_pedido = $1', [idPedido])).rows[0];
         if (!pedidoData) return;
 
-        // 2. Buscamos el detalle de los productos del pedido
         const resDetalles = await pool.query(`
             d.cantidad, d.precio_congelado as precio_unitario, pr.nombre 
             FROM detalle_pedidos d 
@@ -45,8 +42,6 @@ async function dispararEnvioFactura(idPedido, numeroCliente) {
             precio_unitario: row.precio_unitario
         }));
 
-        // 3. Llamamos a nuestra API interna de Next.js que genera el PDF y lo manda por WhatsApp
-        // Asegurate de que SERVER_URL esté definido en tu .env (ej: http://localhost:3000 o tu dominio de producción)
         const baseUrl = process.env.SERVER_URL || 'http://localhost:3000';
         
         await axios.post(`${baseUrl}/api/factura`, {
@@ -265,6 +260,7 @@ const recibirMensaje = async (req, res) => {
                 pedidosEsperandoTurno.delete(numeroCliente);
                 pedidosEsperandoPago.set(numeroCliente, idPedidoAsociado);
 
+                // --- CAMBIO: Actualizamos la lista de botones para incluir Efectivo en vez de Cuenta Corriente ---
                 const dataMenuPago = {
                     messaging_product: "whatsapp",
                     to: numeroCliente,
@@ -283,7 +279,7 @@ const recibirMensaje = async (req, res) => {
                                         { id: "pago_mp", title: "Mercado Pago", description: "Acreditación automática" },
                                         { id: "pago_transferencia", title: "Transferencia", description: "Por Alias o CBU" },
                                         { id: "pago_cuenta_dni", title: "Cuenta DNI", description: "Envío de comprobante" },
-                                        { id: "pago_cuenta", title: "Cuenta Corriente", description: "Anotar en tu cuenta" }
+                                        { id: "pago_efectivo", title: "Efectivo", description: "Pagás al recibir" }
                                     ]
                                 }
                             ]
@@ -293,7 +289,8 @@ const recibirMensaje = async (req, res) => {
                 await axios.post(`https://graph.facebook.com/v17.0/${process.env.WHATSAPP_PHONE_ID}/messages`, dataMenuPago, { headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` } });
             }
 
-            if (opcion === 'pago_mp' || opcion === 'pago_transferencia' || opcion === 'pago_cuenta_dni' || opcion === 'pago_cuenta') {
+            // --- CAMBIO: Ajustamos la lógica para atajar la nueva opción "pago_efectivo" ---
+            if (opcion === 'pago_mp' || opcion === 'pago_transferencia' || opcion === 'pago_cuenta_dni' || opcion === 'pago_efectivo') {
                 const idPedidoAsociado = pedidosEsperandoPago.get(numeroCliente);
                 if (!idPedidoAsociado) return await enviarMensaje(numeroCliente, "Hubo un problema con tu sesión de pago.");
 
@@ -313,13 +310,22 @@ const recibirMensaje = async (req, res) => {
                     
                     await enviarMensaje(numeroCliente, `🏦 Elegiste abonar con ${nombreMetodo}.\n\nEl total a transferir es *$${totalCompra}*.\n\n*Datos bancarios:*\nAlias: *super.compra.ok*\nCBU/CVU: 0000000000000000000000\n\nPor favor, *envianos la foto del comprobante* por este mismo chat para validarlo automáticamente.`);
 
-                } else if (opcion === 'pago_cuenta') {
+                } else if (opcion === 'pago_efectivo') {
+                    // LÓGICA PARA EFECTIVO: Aprueba el pago de una y manda a preparar el pedido
                     await pool.query(
                         `INSERT INTO pagos (id_pedido, metodo, estado, monto) VALUES ($1, $2, $3, $4)`,
-                        [idPedidoAsociado, 'Cuenta Corriente', 'Pendiente de Aprobación', totalCompra]
+                        [idPedidoAsociado, 'Efectivo', 'A Cobrar (Efectivo)', totalCompra]
                     );
+                    
+                    // IMPORTANTE: Lo pasamos directo a "En Preparación" para que el equipo lo arme
+                    await pool.query('UPDATE pedidos SET estado = $1 WHERE id_pedido = $2', ['En Preparación', idPedidoAsociado]);
+                    
                     pedidosEsperandoPago.delete(numeroCliente);
-                    await enviarMensaje(numeroCliente, `📝 Registramos tu solicitud para anotar el pedido por *$${totalCompra}*.\n\nEn breve verificaremos tu cuenta. ¡Gracias!`);
+                    
+                    await enviarMensaje(numeroCliente, `💵 ¡Excelente! Registramos tu pedido para pagar en efectivo al recibir.\n\nTené preparados *$${totalCompra}*.\n\nYa pasamos tu pedido al área de preparación para armarlo.`);
+                    
+                    // También disparamos la factura para que le quede como remito/ticket
+                    await dispararEnvioFactura(idPedidoAsociado, numeroCliente);
 
                 } else if (opcion === 'pago_mp') {
                     try {
