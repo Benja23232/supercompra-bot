@@ -87,8 +87,8 @@ export default function Auditorias() {
                 <tr key={item.id_auditoria} style={{ borderBottom: '1px solid #f3f4f6' }}>
                   
                   <td style={{ padding: '12px', fontSize: '0.85rem', color: '#4b5563', whiteSpace: 'nowrap' }}>
-                    {/* ACÁ ESTÁ LA MAGIA DEL HORARIO ARGENTINO */}
-                    {new Date(item.fecha).toLocaleString('es-AR', {
+                    {/* Corrección para evitar la doble resta del huso horario */}
+                    {new Date(item.fecha.substring(0, 19) + '-03:00').toLocaleString('es-AR', {
                       timeZone: 'America/Argentina/Buenos_Aires',
                       day: '2-digit',
                       month: '2-digit',
