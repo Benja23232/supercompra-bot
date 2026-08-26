@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Preview Comprobante de Venta</title>
+<style>
+  body {
+    background: #e5e5e5;
+    font-family: Helvetica, Arial, sans-serif;
+    display: flex;
+    justify-content: center;
+    padding: 40px 20px;
+    margin: 0;
+  }
+  .hoja {
+    background: white;
+    width: 612px; /* tamaño carta aprox en px, como pdfkit default */
+    min-height: 792px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.25);
+    padding: 50px; /* mismo margin: 50 del PDFDocument */
+    box-sizing: border-box;
+    color: black;
+  }
+  .titulo {
+    font-size: 20px;
+    text-align: center;
+    font-weight: bold;
+    margin-bottom: 4px;
+  }
+  .subtitulo {
+    font-size: 10px;
+    color: gray;
+    text-align: center;
+    margin-bottom: 20px;
+  }
+  .datos p {
+    font-size: 12px;
+    margin: 4px 0;
+  }
+  .espacio { height: 14px; }
+  .header-tabla {
+    font-size: 10px;
+    color: #2980b9;
+    text-decoration: underline;
+    margin: 14px 0 8px 0;
+  }
+  .producto {
+    font-size: 12px;
+    margin: 3px 0;
+  }
+  .total {
+    font-size: 14px;
+    text-align: right;
+    margin-top: 20px;
+    font-weight: bold;
+  }
+  .gracias {
+    font-size: 10px;
+    color: gray;
+    text-align: center;
+    margin-top: 40px;
+  }
+  .nota {
+    background: #fff8e1;
+    border: 1px solid #ffe082;
+    color: #8a6d00;
+    font-size: 12px;
+    padding: 10px 14px;
+    border-radius: 6px;
+    max-width: 612px;
+    margin: 0 auto 16px auto;
+  }
+</style>
+</head>
+<body>
+<div>
+  <div class="nota" id="nota">Esto es una vista de referencia (HTML) generada con datos de ejemplo, para que veas el mismo diseño que arma tu código con <code>pdfkit</code>. No es el PDF real.</div>
+  <div class="hoja">
+    <div class="titulo">COMPROBANTE DE VENTA</div>
+    <div class="subtitulo">Documento no válido como factura</div>
+    <div class="espacio"></div>
+
+    <div class="datos" id="datos"></div>
+    <div class="espacio"></div>
+
+    <div class="header-tabla">Cant. | Descripción | Precio Unit. | Subtotal</div>
+
+    <div id="productos"></div>
+
+    <div class="total" id="total"></div>
+
+    <div class="gracias">¡Gracias por tu compra!</div>
+  </div>
+</div>
+
+<script>
+  // Datos de ejemplo, con la misma forma que espera tu endpoint (pedido.*)
+  const pedido = {
+    id_pedido: 1042,
+    cliente_nombre: "Juan Pérez",
+    cliente_telefono: "5491122334455",
+    productos: [
+      { cantidad: 2, nombre: "Hamburguesa Clásica", precio_unitario: 3500 },
+      { cantidad: 1, nombre: "Papas Fritas Grandes", precio_unitario: 2200 },
+      { cantidad: 3, nombre: "Gaseosa 500ml", precio_unitario: 1200 }
+    ],
+    total: 12900
+  };
+
+  const fecha = new Date().toLocaleDateString('es-AR');
+
+  document.getElementById('datos').innerHTML = `
+    <p>Fecha: ${fecha}</p>
+    <p>Cliente: ${pedido.cliente_nombre || 'Consumidor Final'}</p>
+    <p>Nº de Pedido: #${pedido.id_pedido}</p>
+  `;
+
+  const prodDiv = document.getElementById('productos');
+  pedido.productos.forEach(prod => {
+    const subtotal = prod.cantidad * prod.precio_unitario;
+    const p = document.createElement('p');
+    p.className = 'producto';
+    p.textContent = `${prod.cantidad}x  ${prod.nombre}  -  $${prod.precio_unitario}  ->  $${subtotal}`;
+    prodDiv.appendChild(p);
+  });
+
+  document.getElementById('total').textContent = `TOTAL: $${pedido.total}`;
+</script>
+</body>
+</html>
