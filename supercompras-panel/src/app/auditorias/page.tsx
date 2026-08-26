@@ -87,7 +87,17 @@ export default function Auditorias() {
                 <tr key={item.id_auditoria} style={{ borderBottom: '1px solid #f3f4f6' }}>
                   
                   <td style={{ padding: '12px', fontSize: '0.85rem', color: '#4b5563', whiteSpace: 'nowrap' }}>
-                    {new Date(item.fecha).toLocaleString('es-AR')}
+                    {/* ACÁ ESTÁ LA MAGIA DEL HORARIO ARGENTINO */}
+                    {new Date(item.fecha).toLocaleString('es-AR', {
+                      timeZone: 'America/Argentina/Buenos_Aires',
+                      day: '2-digit',
+                      month: '2-digit',
+                      year: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                      second: '2-digit',
+                      hour12: false
+                    })}
                   </td>
 
                   <td style={{ padding: '12px', fontWeight: 'bold', fontSize: '0.9rem' }}>
