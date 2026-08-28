@@ -19,7 +19,6 @@ const COSTO_FULL = 1000;
 // Función auxiliar para generar y enviar la factura en PDF llamando a la API de Next.js
 async function dispararEnvioFactura(idPedido, numeroCliente) {
     try {
-        // CORREGIDO: Se agregó el SELECT
         const resPedido = await pool.query(`
             SELECT p.id_pedido, p.total_compra, c.nombre as cliente_nombre 
             FROM pedidos p 
@@ -30,7 +29,6 @@ async function dispararEnvioFactura(idPedido, numeroCliente) {
         const pedidoData = resPedido.rows[0] || (await pool.query('SELECT * FROM pedidos WHERE id_pedido = $1', [idPedido])).rows[0];
         if (!pedidoData) return;
 
-        // CORREGIDO: Se agregó el SELECT
         const resDetalles = await pool.query(`
             SELECT d.cantidad, d.precio_congelado as precio_unitario, pr.nombre 
             FROM detalle_pedidos d 
@@ -78,12 +76,11 @@ const recibirMensaje = async (req, res) => {
 
         let numeroCliente = message.from.startsWith("549") ? message.from.replace("549", "54") : message.from;
 
-        // --- NUEVO: MANEJO DE UBICACIÓN (GPS WHATSAPP) ---
+        // --- MANEJO DE UBICACIÓN (GPS WHATSAPP) ---
         if (message.type === 'location') {
             if (pedidosEsperandoDireccion.has(numeroCliente)) {
                 const lat = message.location.latitude;
                 const lng = message.location.longitude;
-                // Guardamos directamente el link de Google Maps con las coordenadas exactas
                 const direccionGPS = `https://maps.google.com/?q=${lat},${lng}`;
 
                 const datosPedido = pedidosEsperandoDireccion.get(numeroCliente);
@@ -113,14 +110,13 @@ const recibirMensaje = async (req, res) => {
             }
         }
 
-        // 1. MANEJO DE MENSAJES DE TEXTO (AHORA AUTOFLETA "TRES LOMAS")
+        // 1. MANEJO DE MENSAJES DE TEXTO
         if (message.type === 'text') {
             const textoRecibido = message.text.body;
 
             if (pedidosEsperandoDireccion.has(numeroCliente)) {
                 let direccionMejorada = textoRecibido.trim();
                 
-                // Si el cliente no aclara la ciudad, se la inyectamos para salvar a Google Maps
                 if (!direccionMejorada.toLowerCase().includes('tres lomas')) {
                     direccionMejorada = `${direccionMejorada}, Tres Lomas`;
                 }
@@ -186,7 +182,6 @@ const recibirMensaje = async (req, res) => {
                         pedidosEsperandoComprobante.delete(numeroCliente);
                         await enviarMensaje(numeroCliente, `✅ ¡Pago validado automáticamente con éxito!\n\nEl importe de *$${montoString}* fue confirmado. Tu pedido ya pasó al área de preparación para ser despachado.`);
                         
-                        // 📄 DISPARAR FACTURA AUTOMÁTICA POR COMPROBANTE APROBADO
                         await dispararEnvioFactura(datosPago.idPedido, numeroCliente);
 
                     } else {
@@ -266,7 +261,6 @@ const recibirMensaje = async (req, res) => {
 
                 pedidosEsperandoDireccion.set(numeroCliente, { idPedido: idNuevoPedido, subtotal: subtotal, total: totalCarrito });
                 
-                // --- CAMBIO: Actualizamos el mensaje pidiendo texto o ubicación de WhatsApp ---
                 await enviarMensaje(numeroCliente, "🛒 ¡Recibimos tu pedido y verificamos que hay stock de todo!\n\nPara el envío, podés hacer dos cosas:\n1️⃣ *Escribirnos la dirección* (Ej: Belgrano 1024)\n2️⃣ Tocar el 📎 (clip) abajo y enviarnos tu *Ubicación actual* de WhatsApp para mayor precisión.");
 
             } catch (errorBD) {
@@ -322,6 +316,7 @@ const recibirMensaje = async (req, res) => {
                                     title: "Opciones disponibles",
                                     rows: [
                                         { id: "pago_mp", title: "Mercado Pago", description: "Acreditación automática" },
+                                        { id: "pago_tarjeta_pampa", title: "Tarjeta Bco Pampa", description: "Llevamos el posnet" },
                                         { id: "pago_transferencia", title: "Transferencia", description: "Por Alias o CBU" },
                                         { id: "pago_cuenta_dni", title: "Cuenta DNI", description: "Envío de comprobante" },
                                         { id: "pago_efectivo", title: "Efectivo", description: "Pagás al recibir" }
@@ -334,13 +329,15 @@ const recibirMensaje = async (req, res) => {
                 await axios.post(`https://graph.facebook.com/v17.0/${process.env.WHATSAPP_PHONE_ID}/messages`, dataMenuPago, { headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` } });
             }
 
-            if (opcion === 'pago_mp' || opcion === 'pago_transferencia' || opcion === 'pago_cuenta_dni' || opcion === 'pago_efectivo') {
+            // --- ACÁ EVALUAMOS LA RESPUESTA DE PAGO ---
+            if (opcion === 'pago_mp' || opcion === 'pago_transferencia' || opcion === 'pago_cuenta_dni' || opcion === 'pago_efectivo' || opcion === 'pago_tarjeta_pampa') {
                 const idPedidoAsociado = pedidosEsperandoPago.get(numeroCliente);
                 if (!idPedidoAsociado) return await enviarMensaje(numeroCliente, "Hubo un problema con tu sesión de pago.");
 
                 const resPedido = await pool.query('SELECT total_compra FROM pedidos WHERE id_pedido = $1', [idPedidoAsociado]);
                 const totalCompra = resPedido.rows[0].total_compra;
 
+                // --- 1. TRANSFERENCIAS CON COMPROBANTE ---
                 if (opcion === 'pago_transferencia' || opcion === 'pago_cuenta_dni') {
                     const nombreMetodo = opcion === 'pago_cuenta_dni' ? 'Cuenta DNI' : 'Transferencia';
                     
@@ -354,6 +351,22 @@ const recibirMensaje = async (req, res) => {
                     
                     await enviarMensaje(numeroCliente, `🏦 Elegiste abonar con ${nombreMetodo}.\n\nEl total a transferir es *$${totalCompra}*.\n\n*Datos bancarios:*\nAlias: *super.compra.ok*\nCBU/CVU: 0000000000000000000000\n\nPor favor, *envianos la foto del comprobante* por este mismo chat para validarlo automáticamente.`);
 
+                // --- 2. TARJETA BANCO PAMPA (POSNET) ---
+                } else if (opcion === 'pago_tarjeta_pampa') {
+                    await pool.query(
+                        `INSERT INTO pagos (id_pedido, metodo, estado, monto) VALUES ($1, $2, $3, $4)`,
+                        [idPedidoAsociado, 'Tarjeta Bco Pampa', 'A Cobrar (Posnet)', totalCompra]
+                    );
+                    
+                    await pool.query('UPDATE pedidos SET estado = $1 WHERE id_pedido = $2', ['En Preparación', idPedidoAsociado]);
+                    
+                    pedidosEsperandoPago.delete(numeroCliente);
+                    
+                    await enviarMensaje(numeroCliente, `💳 ¡Perfecto! Registramos tu pago con *Tarjeta del Banco Pampa*.\n\nEl total es *$${totalCompra}*.\n\nEl repartidor llevará el posnet/lector para que puedas abonar con tu tarjeta al momento de recibir el pedido. ¡Ya lo estamos preparando!`);
+                    
+                    await dispararEnvioFactura(idPedidoAsociado, numeroCliente);
+
+                // --- 3. EFECTIVO ---
                 } else if (opcion === 'pago_efectivo') {
                     await pool.query(
                         `INSERT INTO pagos (id_pedido, metodo, estado, monto) VALUES ($1, $2, $3, $4)`,
@@ -368,6 +381,7 @@ const recibirMensaje = async (req, res) => {
                     
                     await dispararEnvioFactura(idPedidoAsociado, numeroCliente);
 
+                // --- 4. MERCADO PAGO ---
                 } else if (opcion === 'pago_mp') {
                     try {
                         const responsePreference = await preferenceClient.create({

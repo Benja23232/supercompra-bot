@@ -68,7 +68,7 @@ export default function Productos() {
     } else {
       router.push('/'); 
     }
-  }, [router]);
+  }, []);
 
   const activarEdicion = (prod: any) => {
     setEditandoId(prod.id_producto);
