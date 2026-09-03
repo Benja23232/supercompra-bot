@@ -30,6 +30,26 @@ export default function PantallaRepartidor() {
     }
   }, [router]);
 
+  // --- TIEMPO REAL: Se actualiza solo cuando hay cambios en los pedidos ---
+  useEffect(() => {
+    if (!autorizado) return;
+
+    const channel = supabase
+      .channel('repartidor-pedidos-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'pedidos' },
+        (payload) => {
+          cargarPedidosParaReparto();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [autorizado]);
+
   useEffect(() => {
     let watchId: number;
 
@@ -69,14 +89,13 @@ export default function PantallaRepartidor() {
     const { data, error } = await supabase
       .from('pedidos')
       .select('*')
-      .like('estado', '%En Proceso%')
+      .like('estado', '%En Reparto%')
       .order('fecha_creacion', { ascending: true });
 
     if (data) setPedidos(data);
     setCargando(false);
   };
 
-  // --- FUNCIÓN CORREGIDA ---
   const notificarLlegada = async (pedido: any) => {
     const tel = pedido.whatsapp_id;
     if (tel) {
@@ -91,8 +110,8 @@ export default function PantallaRepartidor() {
   const marcarEntregado = async (pedido: any) => {
     let estadoFinal = 'Entregado';
     if (pedido.estado.includes('Mañana')) estadoFinal = 'Entregado - Mañana';
-    if (pedido.estado.includes('Tarde')) estadoFinal = 'Entregado - Tarde';
-    if (pedido.estado.includes('Full')) estadoFinal = 'Entregado - Full';
+    else if (pedido.estado.includes('Tarde')) estadoFinal = 'Entregado - Tarde';
+    else if (pedido.estado.includes('Full')) estadoFinal = 'Entregado - Full';
 
     const { error } = await supabase
       .from('pedidos')
@@ -133,7 +152,9 @@ export default function PantallaRepartidor() {
   };
 
   const pedidosFiltrados = pedidos.filter(p => {
-    if (turnoActivo === 'full') return p.estado?.includes('Full');
+    const noTieneTurno = !p.estado?.includes('Mañana') && !p.estado?.includes('Tarde') && !p.estado?.includes('Full');
+    
+    if (turnoActivo === 'full') return noTieneTurno || p.estado?.includes('Full');
     if (turnoActivo === 'manana') return p.estado?.includes('Mañana');
     if (turnoActivo === 'tarde') return p.estado?.includes('Tarde');
     return false;
@@ -201,7 +222,6 @@ export default function PantallaRepartidor() {
                   <span style={{ fontSize: '0.85rem' }}>ID: #{String(pedido.id_pedido).slice(0, 6)}</span>
                 </h3>
                 
-                {/* --- RENDERIZADO CORREGIDO --- */}
                 <div style={{ marginBottom: '12px' }}>
                   <p style={{ margin: '0 0 4px 0', color: '#1e293b', fontSize: '1.15rem', fontWeight: 'bold' }}>
                     👤 {pedido.nombre_cliente || 'Cliente sin nombre'}

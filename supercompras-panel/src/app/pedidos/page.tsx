@@ -17,6 +17,10 @@ export default function Pedidos() {
   const [alertaNuevoPedido, setAlertaNuevoPedido] = useState(false);
   const [filtro, setFiltro] = useState('todos');
 
+  // --- NUEVO: Estado para la selección múltiple ---
+  const [pedidosSeleccionados, setPedidosSeleccionados] = useState<any[]>([]);
+  const [estadoMasivo, setEstadoMasivo] = useState('En Preparación');
+
   async function fetchPedidos() {
     const { data, error } = await supabase
       .from('pedidos')
@@ -62,7 +66,7 @@ export default function Pedidos() {
   const cambiarEstado = async (id: any, nuevoEstadoElegido: string, estadoAnterior: string) => {
     let estadoFinal = nuevoEstadoElegido;
 
-    if (['Pendiente', 'En Proceso', 'Entregado', 'Cancelado'].includes(nuevoEstadoElegido)) {
+    if (['Pendiente', 'En Preparación', 'En Reparto', 'Entregado', 'Cancelado'].includes(nuevoEstadoElegido)) {
       if (estadoAnterior.includes('Mañana')) estadoFinal = `${nuevoEstadoElegido} - Mañana`;
       else if (estadoAnterior.includes('Tarde')) estadoFinal = `${nuevoEstadoElegido} - Tarde`;
       else if (estadoAnterior.includes('Full')) estadoFinal = `${nuevoEstadoElegido} - Full`;
@@ -70,9 +74,15 @@ export default function Pedidos() {
 
     if (estadoFinal === estadoAnterior) return;
 
+    const usuarioLogueado = localStorage.getItem('emailUsuario') || localStorage.getItem('rolUsuario') || 'Sistema';
+    const datosActualizacion: any = { estado: estadoFinal };
+    if (nuevoEstadoElegido === 'En Reparto') {
+      datosActualizacion.repartidor = usuarioLogueado;
+    }
+
     const { error } = await supabase
       .from('pedidos')
-      .update({ estado: estadoFinal })
+      .update(datosActualizacion)
       .eq('id_pedido', id);
 
     if (error) {
@@ -85,6 +95,53 @@ export default function Pedidos() {
         `Actualizó el estado del pedido #${String(id).slice(0, 8)} de "${estadoAnterior}" a "${estadoFinal}"`
       );
       fetchPedidos(); 
+    }
+  };
+
+  // --- NUEVO: Función para actualizar masivamente los pedidos seleccionados ---
+  const cambiarEstadoMasivo = async () => {
+    if (pedidosSeleccionados.length === 0) return;
+
+    const usuarioLogueado = localStorage.getItem('emailUsuario') || localStorage.getItem('rolUsuario') || 'Sistema';
+    const datosActualizacion: any = { estado: estadoMasivo };
+    if (estadoMasivo === 'En Reparto') {
+      datosActualizacion.repartidor = usuarioLogueado;
+    }
+
+    const { error } = await supabase
+      .from('pedidos')
+      .update(datosActualizacion)
+      .in('id_pedido', pedidosSeleccionados);
+
+    if (error) {
+      alert('Error al actualizar los pedidos seleccionados.');
+      console.error(error);
+    } else {
+      await logAuditoria(
+        'Pedidos',
+        'Cambio de estado masivo',
+        `Actualizó ${pedidosSeleccionados.length} pedidos al estado "${estadoMasivo}"`
+      );
+      setPedidosSeleccionados([]);
+      fetchPedidos();
+    }
+  };
+
+  // --- NUEVO: Manejo de selección individual y general ---
+  const toggleSeleccionPedido = (id: any) => {
+    if (pedidosSeleccionados.includes(id)) {
+      setPedidosSeleccionados(pedidosSeleccionados.filter(item => item !== id));
+    } else {
+      setPedidosSeleccionados([...pedidosSeleccionados, id]);
+    }
+  };
+
+  const seleccionarTodosVisibles = () => {
+    const idsVisibles = [...pedidosPendientes, ...pedidosEnProceso, ...pedidosEnReparto, ...pedidosFinalizados].map(p => p.id_pedido);
+    if (pedidosSeleccionados.length === idsVisibles.length) {
+      setPedidosSeleccionados([]);
+    } else {
+      setPedidosSeleccionados(idsVisibles);
     }
   };
 
@@ -156,7 +213,12 @@ export default function Pedidos() {
   });
 
   const pedidosPendientes = pedidosPorTurno.filter(p => !p.estado || p.estado.includes('Pendiente'));
-  const pedidosEnProceso = pedidosPorTurno.filter(p => p.estado?.includes('En Proceso'));
+  const pedidosEnProceso = pedidosPorTurno.filter(p => 
+    p.estado?.includes('En Preparación') || 
+    p.estado?.includes('En Preparacion') || 
+    p.estado?.includes('En Proceso')
+  );
+  const pedidosEnReparto = pedidosPorTurno.filter(p => p.estado?.includes('En Reparto'));
   const pedidosFinalizados = pedidosPorTurno.filter(p => p.estado?.includes('Entregado') || p.estado?.includes('Cancelado'));
 
   if (!autorizado) {
@@ -172,7 +234,7 @@ export default function Pedidos() {
       return (
         <div style={{ marginBottom: '30px', padding: '30px', backgroundColor: '#121214', borderRadius: '12px', border: '1px solid #27272a', textAlign: 'center' }}>
           <span style={{ fontSize: '2.5rem', display: 'block', marginBottom: '10px' }}>
-            {tituloSecc.includes('Espera') ? '⏳' : tituloSecc.includes('Proceso') ? '📦' : '✅'}
+            {tituloSecc.includes('Espera') ? '⏳' : tituloSecc.includes('Armado') ? '⚙️' : tituloSecc.includes('Reparto') ? '🛵' : '✅'}
           </span>
           <h2 style={{ fontSize: '1.3rem', margin: '0 0 5px 0', color: '#f4f4f5' }}>{tituloSecc} (0)</h2>
           <p style={{ color: '#a1a1aa', margin: 0, fontSize: '0.9rem' }}>No hay pedidos en esta etapa para el turno seleccionado.</p>
@@ -193,9 +255,11 @@ export default function Pedidos() {
         }}>
           {lista.map((pedido) => {
             const estadoActual = pedido.estado || 'Pendiente';
+            const estaSeleccionado = pedidosSeleccionados.includes(pedido.id_pedido);
 
             let valorSelect = estadoActual;
-            if (estadoActual.includes('En Proceso')) valorSelect = 'En Proceso';
+            if (estadoActual.includes('En Preparación') || estadoActual.includes('En Preparacion') || estadoActual.includes('En Proceso')) valorSelect = 'En Preparación';
+            else if (estadoActual.includes('En Reparto')) valorSelect = 'En Reparto';
             else if (estadoActual.includes('Entregado')) valorSelect = 'Entregado';
             else if (estadoActual.includes('Cancelado')) valorSelect = 'Cancelado';
             else if (estadoActual.includes('Pendiente')) valorSelect = 'Pendiente';
@@ -205,20 +269,29 @@ export default function Pedidos() {
                 key={pedido.id_pedido} 
                 style={{ 
                   backgroundColor: '#121214', 
-                  border: '1px solid #27272a', 
+                  border: estaSeleccionado ? '2px solid #6366f1' : '1px solid #27272a', 
                   borderRadius: '12px', 
                   padding: '20px',
                   boxShadow: '0 4px 6px rgba(0,0,0,0.4)',
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: '14px'
+                  gap: '14px',
+                  position: 'relative'
                 }}
               >
-                {/* Cabecera: Nº Pedido y Total */}
+                {/* Cabecera con Checkbox de selección, Nº Pedido y Total */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #27272a', paddingBottom: '10px' }}>
-                  <span style={{ fontWeight: 'bold', fontSize: '1.1rem', color: '#f4f4f5' }}>
-                    #{String(pedido.id_pedido).slice(0, 8)}...
-                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <input 
+                      type="checkbox" 
+                      checked={estaSeleccionado}
+                      onChange={() => toggleSeleccionPedido(pedido.id_pedido)}
+                      style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#4f46e5' }}
+                    />
+                    <span style={{ fontWeight: 'bold', fontSize: '1.1rem', color: '#f4f4f5' }}>
+                      #{String(pedido.id_pedido).slice(0, 8)}...
+                    </span>
+                  </div>
                   <span style={{ fontWeight: 'bold', fontSize: '1.2rem', color: '#10b981' }}>
                     ${pedido.total_compra || 0}
                   </span>
@@ -269,7 +342,7 @@ export default function Pedidos() {
                   )}
                 </div>
 
-                {/* Selector de Estado y Logística */}
+                {/* Selector de Estado y Logística Individual */}
                 <div>
                   <label style={{ display: 'block', fontSize: '0.85rem', color: '#a1a1aa', marginBottom: '6px' }}>Estado y Logística:</label>
                   <select
@@ -292,13 +365,14 @@ export default function Pedidos() {
                     <option value="Pendiente - Mañana">Pendiente - Mañana</option>
                     <option value="Pendiente - Tarde">Pendiente - Tarde</option>
                     <option value="Pendiente - Full">🚀 Pendiente - Full</option>
-                    <option value="En Proceso">En Proceso</option>
+                    <option value="En Preparación">⚙️ En Preparación</option>
+                    <option value="En Reparto">🛵 En Reparto</option>
                     <option value="Entregado">Entregado</option>
                     <option value="Cancelado">Cancelado</option>
                   </select>
                 </div>
 
-                {/* Botones de Acción (Ver Detalle y Armar Pedido) */}
+                {/* Botones de Acción */}
                 <div style={{ display: 'flex', gap: '10px', marginTop: '4px' }}>
                   <Link 
                     href={`/pedidos/${pedido.id_pedido}`} 
@@ -351,7 +425,8 @@ export default function Pedidos() {
       boxSizing: 'border-box',
       display: 'flex',
       flexDirection: 'column',
-      alignItems: 'center'
+      alignItems: 'center',
+      paddingBottom: pedidosSeleccionados.length > 0 ? '100px' : '20px' // Espacio para la barra flotante
     }}>
       
       <div style={{ width: '100%', maxWidth: '1400px' }}>
@@ -400,6 +475,12 @@ export default function Pedidos() {
           
           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
             <button 
+              onClick={seleccionarTodosVisibles}
+              style={{ backgroundColor: '#27272a', color: '#f4f4f5', border: '1px solid #3f3f46', padding: '10px 18px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.9rem' }}
+            >
+              ☑️ Seleccionar Todos
+            </button>
+            <button 
               onClick={abrirRutaEnMapa} 
               style={{ backgroundColor: '#16a34a', color: '#fff', border: 'none', padding: '10px 18px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', gap: '5px', alignItems: 'center', fontSize: '0.9rem' }}
             >
@@ -447,12 +528,87 @@ export default function Pedidos() {
         ) : (
           <div style={{ width: '100%' }}>
             {renderSeccionPedidos(pedidosPendientes, '⏳ Cola de Espera (Pendientes)', 'Pedidos ingresados esperando que un empleado los busque en las estanterías.')}
-            {renderSeccionPedidos(pedidosEnProceso, '⚙️ En Armado / Listos para Enviar', 'Pedidos que ya pasaron por picking y están listos para el repartidor.')}
+            {renderSeccionPedidos(pedidosEnProceso, '⚙️ En Armado / Listos', 'Pedidos que ya pasaron a preparación y están en curso.')}
+            {renderSeccionPedidos(pedidosEnReparto, '🛵 En Reparto (En Camino)', 'Pedidos que ya salieron con el repartidor hacia el domicilio.')}
             {renderSeccionPedidos(pedidosFinalizados, '📦 Historial Terminado', 'Pedidos ya entregados al cliente o cancelados.')}
           </div>
         )}
 
       </div>
+
+      {/* --- NUEVO: Barra flotante de acciones masivas --- */}
+      {pedidosSeleccionados.length > 0 && (
+        <div style={{
+          position: 'fixed',
+          bottom: '20px',
+          backgroundColor: '#18181b',
+          border: '1px solid #3f3f46',
+          padding: '15px 25px',
+          borderRadius: '12px',
+          boxShadow: '0 10px 25px rgba(0,0,0,0.6)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '20px',
+          zIndex: 1100,
+          flexWrap: 'wrap',
+          maxWidth: '90%'
+        }}>
+          <span style={{ fontWeight: 'bold', fontSize: '0.95rem', color: '#f4f4f5' }}>
+            📦 {pedidosSeleccionados.length} seleccionados
+          </span>
+
+          <select
+            value={estadoMasivo}
+            onChange={(e) => setEstadoMasivo(e.target.value)}
+            style={{
+              padding: '0.5rem 0.75rem',
+              borderRadius: '8px',
+              border: '1px solid #3f3f46',
+              backgroundColor: '#09090b',
+              color: '#f4f4f5',
+              fontSize: '0.9rem',
+              fontWeight: '500',
+              outline: 'none'
+            }}
+          >
+            <option value="Pendiente">Pendiente</option>
+            <option value="En Preparación">⚙️ En Preparación</option>
+            <option value="En Reparto">🛵 En Reparto</option>
+            <option value="Entregado">Entregado</option>
+            <option value="Cancelado">Cancelado</option>
+          </select>
+
+          <button
+            onClick={cambiarEstadoMasivo}
+            style={{
+              backgroundColor: '#4f46e5',
+              color: '#fff',
+              border: 'none',
+              padding: '8px 16px',
+              borderRadius: '8px',
+              fontWeight: 'bold',
+              cursor: 'pointer',
+              fontSize: '0.9rem'
+            }}
+          >
+            Aplicar Estado Masivo
+          </button>
+
+          <button
+            onClick={() => setPedidosSeleccionados([])}
+            style={{
+              backgroundColor: 'transparent',
+              color: '#a1a1aa',
+              border: 'none',
+              cursor: 'pointer',
+              fontSize: '0.9rem',
+              fontWeight: 'bold'
+            }}
+          >
+            Limpiar selección
+          </button>
+        </div>
+      )}
 
       <style dangerouslySetInnerHTML={{__html: `
         @keyframes slideIn {
