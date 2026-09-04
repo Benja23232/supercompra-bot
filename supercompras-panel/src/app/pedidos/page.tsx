@@ -17,7 +17,6 @@ export default function Pedidos() {
   const [alertaNuevoPedido, setAlertaNuevoPedido] = useState(false);
   const [filtro, setFiltro] = useState('todos');
 
-  // --- NUEVO: Estado para la selección múltiple ---
   const [pedidosSeleccionados, setPedidosSeleccionados] = useState<any[]>([]);
   const [estadoMasivo, setEstadoMasivo] = useState('En Preparación');
 
@@ -98,7 +97,6 @@ export default function Pedidos() {
     }
   };
 
-  // --- NUEVO: Función para actualizar masivamente los pedidos seleccionados ---
   const cambiarEstadoMasivo = async () => {
     if (pedidosSeleccionados.length === 0) return;
 
@@ -127,7 +125,6 @@ export default function Pedidos() {
     }
   };
 
-  // --- NUEVO: Manejo de selección individual y general ---
   const toggleSeleccionPedido = (id: any) => {
     if (pedidosSeleccionados.includes(id)) {
       setPedidosSeleccionados(pedidosSeleccionados.filter(item => item !== id));
@@ -192,15 +189,21 @@ export default function Pedidos() {
     window.open(urlMaps, '_blank');
   };
 
+  // --- CORREGIDO: Ajuste de zona horaria a Argentina y formato 24hs ---
   const formatearFecha = (fechaIso: string) => {
     if (!fechaIso) return '-';
-    const fecha = new Date(fechaIso);
-    return fecha.toLocaleDateString('es-AR', {
+    // Nos aseguramos de que la fecha se interprete como UTC agregando la 'Z' si no la trae
+    const fechaStr = fechaIso.endsWith('Z') || fechaIso.includes('+') ? fechaIso : fechaIso + 'Z';
+    const fecha = new Date(fechaStr);
+    
+    return fecha.toLocaleString('es-AR', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
+      hour12: false,
+      timeZone: 'America/Argentina/Buenos_Aires'
     });
   };
 
@@ -426,7 +429,7 @@ export default function Pedidos() {
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',
-      paddingBottom: pedidosSeleccionados.length > 0 ? '100px' : '20px' // Espacio para la barra flotante
+      paddingBottom: pedidosSeleccionados.length > 0 ? '100px' : '20px'
     }}>
       
       <div style={{ width: '100%', maxWidth: '1400px' }}>
@@ -536,7 +539,6 @@ export default function Pedidos() {
 
       </div>
 
-      {/* --- NUEVO: Barra flotante de acciones masivas --- */}
       {pedidosSeleccionados.length > 0 && (
         <div style={{
           position: 'fixed',
