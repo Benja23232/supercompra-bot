@@ -74,9 +74,8 @@ export async function POST(request: Request) {
     const telefonoLimpio = telefonoCrudo.toString().replace(/[^0-9]/g, '');
 
     // 5. Enviar el PDF por WhatsApp vía Meta API
-    // IMPORTANTE: Asegúrate de tener estas dos variables en Vercel
-    const accessToken = process.env.WHATSAPP_TOKEN;
-    const phoneNumberId = process.env.WHATSAPP_PHONE_ID;
+    const accessToken = process.env.META_ACCESS_TOKEN;
+    const phoneNumberId = process.env.META_PHONE_NUMBER_ID;
 
     if (accessToken && phoneNumberId) {
       const responseMeta = await fetch(`https://graph.facebook.com/v17.0/${phoneNumberId}/messages`, {
@@ -92,7 +91,7 @@ export async function POST(request: Request) {
           document: {
             link: pdfUrl,
             caption: '¡Acá tenés tu comprobante de compra! 📄',
-            filename: 'comprobante_supercompra.pdf' // Obligatorio para Meta
+            filename: 'comprobante_supercompra.pdf'
           }
         })
       });
@@ -104,7 +103,7 @@ export async function POST(request: Request) {
         console.log("✅ PDF enviado exitosamente a Meta.");
       }
     } else {
-      console.warn("⚠️ Faltan variables WHATSAPP_TOKEN o WHATSAPP_PHONE_ID en el entorno.");
+      console.warn("⚠️ Faltan variables META_ACCESS_TOKEN o META_PHONE_NUMBER_ID en el entorno.");
     }
 
     return NextResponse.json({ success: true, url: pdfUrl });
