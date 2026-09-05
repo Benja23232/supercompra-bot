@@ -13,6 +13,9 @@ const pedidosEsperandoTurno = new Map();
 const pedidosEsperandoPago = new Map();
 const pedidosEsperandoComprobante = new Map(); 
 
+// Memoria anti-duplicados para evitar que Meta procese dos veces el mismo mensaje si el servidor se demora
+const mensajesProcesados = new Set(); 
+
 const COSTO_ENVIO = 4000;
 const COSTO_FULL = 1000;
 
@@ -73,6 +76,18 @@ const recibirMensaje = async (req, res) => {
     try {
         const message = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
         if (!message) return res.sendStatus(200);
+
+        // --- FILTRO ANTI-DUPLICADOS (IDEMPOTENCIA) ---
+        // Si Meta reenvía el mismo mensaje porque tardamos en responder, lo ignoramos de inmediato
+        if (mensajesProcesados.has(message.id)) {
+            console.log(`⚠️ Mensaje duplicado detectado de Meta (ID: ${message.id}). Omitiendo...`);
+            return res.sendStatus(200);
+        }
+        mensajesProcesados.add(message.id);
+        
+        // Limpiamos la memoria periódicamente para que no crezca infinitamente
+        if (mensajesProcesados.size > 500) mensajesProcesados.clear();
+        // ---------------------------------------------
 
         let numeroCliente = message.from.startsWith("549") ? message.from.replace("549", "54") : message.from;
 
