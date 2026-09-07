@@ -180,10 +180,10 @@ export default function Productos() {
       <div className="encabezado-pagina">
         <h1 className="titulo-pagina">📦 Depósito y Promos</h1>
         <div className="grupo-botones">
-          <button onClick={() => {setMostrarFormulario(!mostrarFormulario); setMostrarFormCombo(false);}} className="btn btn-primario">
+          <button onClick={() => {setMostrarFormulario(!mostrarFormulario); setMostrarFormCombo(false); setFormNombre(''); setFormPrecio(''); setFormArchivo(null);}} className="btn btn-primario">
             {mostrarFormulario ? '❌ Cancelar' : '➕ Producto Individual'}
           </button>
-          <button onClick={() => {setMostrarFormCombo(!mostrarFormCombo); setMostrarFormulario(false);}} className="btn btn-exito">
+          <button onClick={() => {setMostrarFormCombo(!mostrarFormCombo); setMostrarFormulario(false); setFormNombre(''); setFormPrecio(''); setFormArchivo(null); setComboItems([]);}} className="btn btn-exito">
             {mostrarFormCombo ? '❌ Cancelar' : '✨ Crear Promo/Combo'}
           </button>
         </div>
@@ -202,18 +202,17 @@ export default function Productos() {
       )}
 
       {mostrarFormCombo && (
-        <form onSubmit={crearCombo} className="formulario-nuevo" style={{ flexWrap: 'wrap', backgroundColor: '#fffbe1', borderColor: '#fef08a' }}>
-          <h3 style={{width: '100%', marginBottom: '10px', color: '#854d0e'}}>✨ Armar Promoción / Combo</h3>
+        <form onSubmit={crearCombo} className="formulario-nuevo" style={{ flexWrap: 'wrap' }}>
+          <h3 style={{width: '100%', marginBottom: '10px'}}>✨ Armar Promoción / Combo</h3>
           <div className="campo-form grow"><label className="label-form">Nombre de la Promo</label><input type="text" required value={formNombre} onChange={(e) => setFormNombre(e.target.value)} className="input-form" placeholder="Ej: 2x1 Alfajor Jorgito"/></div>
           <div className="campo-form num"><label className="label-form">Precio Final ($)</label><input type="number" required min="0" step="0.01" value={formPrecio} onChange={(e) => setFormPrecio(Number(e.target.value))} className="input-form"/></div>
-          <div className="campo-form grow" style={{ width: '100%' }}><label className="label-form">Imagen Promocional</label><input type="file" accept="image/*" onChange={(e) => setFormArchivo(e.target.files ? e.target.files[0] : null)} className="input-form"/></div>
-
-          <div style={{width: '100%', padding: '15px', background: '#fff', borderRadius: '8px', border: '1px dashed #ccc', margin: '10px 0'}}>
+          
+          <div style={{width: '100%', padding: '15px', background: 'rgba(255, 255, 255, 0.03)', borderRadius: '8px', border: '1px dashed var(--borde, #ccc)', margin: '10px 0'}}>
             <label className="label-form font-fuerte">Productos que componen este combo:</label>
-            <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
-              <select value={productoSeleccionado} onChange={(e) => setProductoSeleccionado(e.target.value)} className="input-form" style={{flexGrow: 1}}>
+            <div style={{ display: 'flex', gap: '10px', marginTop: '10px', flexWrap: 'wrap' }}>
+              <select value={productoSeleccionado} onChange={(e) => setProductoSeleccionado(e.target.value)} className="input-form" style={{flexGrow: 1, minWidth: '200px'}}>
                 <option value="">-- Seleccionar producto --</option>
-                {productosUnitarios.map(p => <option key={p.id_producto} value={p.id_producto}>{p.nombre}</option>)}
+                {productosUnitarios.map(p => <option key={p.id_producto} value={p.id_producto} style={{color: '#000'}}>{p.nombre}</option>)}
               </select>
               <input type="number" min="1" value={cantidadSeleccionada} onChange={(e) => setCantidadSeleccionada(Number(e.target.value))} className="input-form" style={{width: '80px'}}/>
               <button type="button" onClick={agregarItemCombo} className="btn btn-secundario">Agregar</button>
@@ -221,14 +220,16 @@ export default function Productos() {
             
             <ul style={{marginTop: '15px', listStyle: 'none', padding: 0}}>
               {comboItems.map((item, index) => (
-                <li key={index} style={{padding: '8px', background: '#f3f4f6', marginBottom: '5px', borderRadius: '5px', display: 'flex', justifyContent: 'space-between'}}>
+                <li key={index} style={{padding: '8px', background: 'rgba(255, 255, 255, 0.05)', marginBottom: '5px', borderRadius: '5px', display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
                   <span>✔️ {item.cantidad}x <b>{item.nombre}</b></span>
-                  <button type="button" onClick={() => eliminarItemCombo(index)} style={{color: 'red', cursor: 'pointer', background: 'none', border: 'none'}}>✖</button>
+                  <button type="button" onClick={() => eliminarItemCombo(index)} style={{color: '#ef4444', cursor: 'pointer', background: 'none', border: 'none', fontWeight: 'bold'}}>✖</button>
                 </li>
               ))}
             </ul>
           </div>
 
+          <div className="campo-form grow" style={{ width: '100%' }}><label className="label-form">Imagen Promocional</label><input type="file" accept="image/*" onChange={(e) => setFormArchivo(e.target.files ? e.target.files[0] : null)} className="input-form"/></div>
+          
           <button type="submit" className="btn btn-exito btn-form" style={{ width: '100%' }} disabled={subiendo}>{subiendo ? 'Guardando...' : 'Crear Promo y Publicar en WhatsApp'}</button>
         </form>
       )}
@@ -271,7 +272,7 @@ export default function Productos() {
                     
                     <td className="texto-izq">
                       {esCombo ? (
-                        <span style={{ fontSize: '0.85rem', color: '#854d0e', fontStyle: 'italic' }}>Promo / Combo activo</span>
+                        <span style={{ fontSize: '0.85rem', color: '#eab308', fontStyle: 'italic' }}>Promo / Combo activo</span>
                       ) : (
                         <>
                           {prod.lotesActivos?.length > 0 ? (
