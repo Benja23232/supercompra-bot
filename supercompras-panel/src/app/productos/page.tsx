@@ -212,7 +212,7 @@ export default function Productos() {
             <div style={{ display: 'flex', gap: '10px', marginTop: '10px', flexWrap: 'wrap' }}>
               <select value={productoSeleccionado} onChange={(e) => setProductoSeleccionado(e.target.value)} className="input-form" style={{flexGrow: 1, minWidth: '200px'}}>
                 <option value="">-- Seleccionar producto --</option>
-                {productosUnitarios.map(p => <option key={p.id_producto} value={p.id_producto} style={{color: '#000'}}>{p.nombre}</option>)}
+                {productosUnitarios.map(p => <option key={p.id_producto} value={p.id_producto} style={{color: '#fff'}}>{p.nombre}</option>)}
               </select>
               <input type="number" min="1" value={cantidadSeleccionada} onChange={(e) => setCantidadSeleccionada(Number(e.target.value))} className="input-form" style={{width: '80px'}}/>
               <button type="button" onClick={agregarItemCombo} className="btn btn-secundario">Agregar</button>
