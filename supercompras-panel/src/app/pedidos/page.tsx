@@ -73,15 +73,9 @@ export default function Pedidos() {
 
     if (estadoFinal === estadoAnterior) return;
 
-    const usuarioLogueado = localStorage.getItem('emailUsuario') || localStorage.getItem('rolUsuario') || 'Sistema';
-    const datosActualizacion: any = { estado: estadoFinal };
-    if (nuevoEstadoElegido === 'En Reparto') {
-      datosActualizacion.repartidor = usuarioLogueado;
-    }
-
     const { error } = await supabase
       .from('pedidos')
-      .update(datosActualizacion)
+      .update({ estado: estadoFinal })
       .eq('id_pedido', id);
 
     if (error) {
@@ -100,15 +94,9 @@ export default function Pedidos() {
   const cambiarEstadoMasivo = async () => {
     if (pedidosSeleccionados.length === 0) return;
 
-    const usuarioLogueado = localStorage.getItem('emailUsuario') || localStorage.getItem('rolUsuario') || 'Sistema';
-    const datosActualizacion: any = { estado: estadoMasivo };
-    if (estadoMasivo === 'En Reparto') {
-      datosActualizacion.repartidor = usuarioLogueado;
-    }
-
     const { error } = await supabase
       .from('pedidos')
-      .update(datosActualizacion)
+      .update({ estado: estadoMasivo })
       .in('id_pedido', pedidosSeleccionados);
 
     if (error) {
@@ -189,10 +177,8 @@ export default function Pedidos() {
     window.open(urlMaps, '_blank');
   };
 
-  // --- CORREGIDO: Ajuste de zona horaria a Argentina y formato 24hs ---
   const formatearFecha = (fechaIso: string) => {
     if (!fechaIso) return '-';
-    // Nos aseguramos de que la fecha se interprete como UTC agregando la 'Z' si no la trae
     const fechaStr = fechaIso.endsWith('Z') || fechaIso.includes('+') ? fechaIso : fechaIso + 'Z';
     const fecha = new Date(fechaStr);
     
@@ -282,7 +268,6 @@ export default function Pedidos() {
                   position: 'relative'
                 }}
               >
-                {/* Cabecera con Checkbox de selección, Nº Pedido y Total */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #27272a', paddingBottom: '10px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <input 
@@ -300,7 +285,6 @@ export default function Pedidos() {
                   </span>
                 </div>
 
-                {/* Cliente y Fecha */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
                   <div style={{ fontSize: '1.05rem', color: '#f4f4f5' }}>
                     👤 <strong>{pedido.nombre_cliente || 'Cliente'}</strong>
@@ -310,7 +294,6 @@ export default function Pedidos() {
                   </div>
                 </div>
 
-                {/* DIRECCIÓN CON ACCESO DIRECTO A MAPS */}
                 <div style={{ 
                   backgroundColor: '#09090b', 
                   padding: '10px 12px', 
@@ -345,7 +328,6 @@ export default function Pedidos() {
                   )}
                 </div>
 
-                {/* Selector de Estado y Logística Individual */}
                 <div>
                   <label style={{ display: 'block', fontSize: '0.85rem', color: '#a1a1aa', marginBottom: '6px' }}>Estado y Logística:</label>
                   <select
@@ -375,7 +357,6 @@ export default function Pedidos() {
                   </select>
                 </div>
 
-                {/* Botones de Acción */}
                 <div style={{ display: 'flex', gap: '10px', marginTop: '4px' }}>
                   <Link 
                     href={`/pedidos/${pedido.id_pedido}`} 
@@ -455,7 +436,6 @@ export default function Pedidos() {
           </div>
         )}
 
-        {/* Navegación Superior */}
         <div style={{ marginBottom: '20px', display: 'flex', justifyContent: 'space-between', width: '100%' }}>
           {rolActivo === 'admin' ? (
             <Link href="/dashboard" style={{ color: '#818cf8', textDecoration: 'none', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '5px' }}>
@@ -468,7 +448,6 @@ export default function Pedidos() {
           )}
         </div>
 
-        {/* Cabecera */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px', marginBottom: '25px', width: '100%' }}>
           <div>
             <h1 style={{ margin: 0, fontSize: '1.8rem', color: '#f4f4f5', display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -498,7 +477,6 @@ export default function Pedidos() {
           </div>
         </div>
 
-        {/* Filtros */}
         <div style={{ backgroundColor: '#121214', padding: '20px', borderRadius: '12px', marginBottom: '35px', border: '1px solid #27272a', width: '100%', boxSizing: 'border-box' }}>
           <h2 style={{ fontSize: '1.05rem', margin: '0 0 15px 0', color: '#f4f4f5', display: 'flex', alignItems: 'center', gap: '8px' }}>
             📍 1. Filtrar por Turno / Envío
