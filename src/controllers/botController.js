@@ -78,14 +78,12 @@ const recibirMensaje = async (req, res) => {
         if (!message) return res.sendStatus(200);
 
         // --- FILTRO ANTI-DUPLICADOS (IDEMPOTENCIA) ---
-        // Si Meta reenvía el mismo mensaje porque tardamos en responder, lo ignoramos de inmediato
         if (mensajesProcesados.has(message.id)) {
             console.log(`⚠️ Mensaje duplicado detectado de Meta (ID: ${message.id}). Omitiendo...`);
             return res.sendStatus(200);
         }
         mensajesProcesados.add(message.id);
         
-        // Limpiamos la memoria periódicamente para que no crezca infinitamente
         if (mensajesProcesados.size > 500) mensajesProcesados.clear();
         // ---------------------------------------------
 
@@ -162,11 +160,56 @@ const recibirMensaje = async (req, res) => {
                 return res.sendStatus(200); 
             }
 
-            const mensajeBienvenida = 
-                "¡Hola! 👋 Bienvenido a Supercompra.\n\n" +
-                "Para ver nuestros productos, tocá el ícono de la tiendita (🏠) que aparece arriba a la derecha. " +
-                "¡Armá tu carrito ahí mismo y envialo por acá para confirmar tu pedido!";
-            await enviarMensaje(numeroCliente, mensajeBienvenida);
+            // --- NUEVO MENÚ INTERACTIVO DE CATEGORÍAS (DINÁMICO) ---
+            try {
+                // 1. Traemos los productos con stock (Límite 30 por restricción estricta de WhatsApp)
+                const resProductos = await pool.query("SELECT id_producto, categoria FROM productos WHERE stock_fisico > 0 LIMIT 30");
+                const productosBD = resProductos.rows;
+
+                // 2. Agrupamos los productos por su categoría automáticamente
+                const categoriasMap = {};
+                productosBD.forEach(prod => {
+                    const cat = prod.categoria || 'Otros';
+                    if (!categoriasMap[cat]) categoriasMap[cat] = [];
+                    categoriasMap[cat].push({ product_retailer_id: prod.id_producto });
+                });
+
+                // 3. Convertimos la agrupación al formato exacto que pide Meta
+                const sectionsDinamicas = Object.keys(categoriasMap).map(nombreCategoria => ({
+                    title: nombreCategoria,
+                    product_items: categoriasMap[nombreCategoria]
+                }));
+
+                // 4. Armamos y enviamos el mensaje interactivo
+                if (sectionsDinamicas.length > 0) {
+                    const dataCatalogo = {
+                        messaging_product: "whatsapp",
+                        recipient_type: "individual",
+                        to: numeroCliente,
+                        type: "interactive",
+                        interactive: {
+                            type: "product_list",
+                            header: { type: "text", text: "🛒 Categorías de Supercompra" },
+                            body: { text: "¡Hola! 👋 Bienvenido.\n\nDesplegá el menú de abajo para ver nuestros artículos por sección y armar tu carrito directamente desde acá." },
+                            footer: { text: "Atención automatizada" },
+                            action: {
+                                catalog_id: "2194379468072114", // Tu ID de catálogo real
+                                sections: sectionsDinamicas 
+                            }
+                        }
+                    };
+
+                    await axios.post(`https://graph.facebook.com/v17.0/${process.env.WHATSAPP_PHONE_ID}/messages`, dataCatalogo, { 
+                        headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` } 
+                    });
+                } else {
+                     // Fallback por si no hay productos con stock
+                     const mensajeSinStock = "¡Hola! 👋 Bienvenido a Supercompra.\n\nEn este momento no tenemos productos disponibles. ¡Volvé a consultarnos más tarde!";
+                     await enviarMensaje(numeroCliente, mensajeSinStock);
+                }
+            } catch (errorCatalogo) {
+                console.error("Error armando catálogo dinámico:", errorCatalogo);
+            }
         }
 
         // 2. MANEJO DE IMÁGENES (OCR)
