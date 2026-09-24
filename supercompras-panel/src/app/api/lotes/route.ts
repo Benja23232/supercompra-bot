@@ -5,14 +5,18 @@ export async function POST(request: Request) {
   try {
     const { id_producto, cantidad, fecha_vencimiento } = await request.json();
 
-    if (!id_producto || !cantidad || !fecha_vencimiento) {
-      return NextResponse.json({ success: false, error: 'Faltan datos' }, { status: 400 });
+    if (!id_producto || !cantidad) {
+      return NextResponse.json({ success: false, error: 'Faltan datos obligatorios' }, { status: 400 });
     }
 
-    // 1. Guardar el nuevo lote en la base de datos
+    // 1. Guardar el nuevo lote (si no hay fecha, se guarda como null)
     const { error: errorLote } = await supabase
       .from('lotes')
-      .insert([{ id_producto, cantidad: Number(cantidad), fecha_vencimiento }]);
+      .insert([{ 
+        id_producto, 
+        cantidad: Number(cantidad), 
+        fecha_vencimiento: fecha_vencimiento ? fecha_vencimiento : null 
+      }]);
 
     if (errorLote) throw new Error(errorLote.message);
 
@@ -39,7 +43,7 @@ export async function POST(request: Request) {
 
     if (catalogId && accessToken) {
       await fetch(`https://graph.facebook.com/v19.0/${catalogId}/products`, {
-        method: 'POST', // Meta usa POST para actualizar si el retailer_id ya existe
+        method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${accessToken}`

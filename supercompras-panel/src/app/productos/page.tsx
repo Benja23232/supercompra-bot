@@ -46,15 +46,27 @@ export default function Productos() {
     } else if (data) {
       const procesados = data.map(p => {
         const lotesActivos = (p.lotes || []).filter((l: any) => l.cantidad > 0);
-        lotesActivos.sort((a: any, b: any) => new Date(a.fecha_vencimiento).getTime() - new Date(b.fecha_vencimiento).getTime());
-        const proximoVenc = lotesActivos.length > 0 ? new Date(lotesActivos[0].fecha_vencimiento).getTime() : Infinity;
+        
+        // Orden seguro manejando lotes sin fecha de vencimiento
+        lotesActivos.sort((a: any, b: any) => {
+          if (!a.fecha_vencimiento) return 1;
+          if (!b.fecha_vencimiento) return -1;
+          return new Date(a.fecha_vencimiento).getTime() - new Date(b.fecha_vencimiento).getTime();
+        });
+
+        const proximoVenc = lotesActivos.length > 0 && lotesActivos[0].fecha_vencimiento 
+          ? new Date(lotesActivos[0].fecha_vencimiento).getTime() 
+          : Infinity;
+
         return { ...p, lotesActivos, proximoVenc };
       });
+
       procesados.sort((a, b) => {
         if (a.tipo === 'combo' && b.tipo !== 'combo') return 1;
         if (a.tipo !== 'combo' && b.tipo === 'combo') return -1;
         return a.proximoVenc - b.proximoVenc;
       });
+
       setProductos(procesados);
     }
     setLoading(false);
@@ -109,13 +121,20 @@ export default function Productos() {
   };
 
   const activarCargaLote = (id: string) => { setLoteProductoId(id); setLoteCant(''); setLoteFecha(''); };
+  
   const guardarNuevoLote = async (id: string) => {
-    if (loteCant === '' || loteFecha === '') return;
+    if (loteCant === '') return;
     await fetch('/api/lotes', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id_producto: id, cantidad: Number(loteCant), fecha_vencimiento: loteFecha })
+      method: 'POST', 
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        id_producto: id, 
+        cantidad: Number(loteCant), 
+        fecha_vencimiento: loteFecha ? loteFecha : null 
+      })
     });
-    setLoteProductoId(null); fetchProductos();
+    setLoteProductoId(null); 
+    fetchProductos();
   };
 
   const crearProducto = async (e: React.FormEvent) => {
@@ -128,8 +147,15 @@ export default function Productos() {
       imageUrl = supabase.storage.from('productos').getPublicUrl(nombreArchivo).data.publicUrl;
     }
     await fetch('/api/productos', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ nombre: formNombre, precio: Number(formPrecio), stock_fisico: Number(formStock), image_url: imageUrl, fecha_vencimiento: formVencimiento })
+      method: 'POST', 
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        nombre: formNombre, 
+        precio: Number(formPrecio), 
+        stock_fisico: Number(formStock), 
+        image_url: imageUrl, 
+        fecha_vencimiento: formVencimiento ? formVencimiento : null 
+      })
     });
     setFormNombre(''); setFormPrecio(''); setFormStock(''); setFormVencimiento(''); setFormArchivo(null);
     setMostrarFormulario(false); fetchProductos(); setSubiendo(false);
@@ -142,6 +168,7 @@ export default function Productos() {
     setComboItems([...comboItems, { id_producto: prod.id_producto, nombre: prod.nombre, cantidad: cantidadSeleccionada }]);
     setProductoSeleccionado(''); setCantidadSeleccionada(1);
   };
+
   const eliminarItemCombo = (index: number) => {
     const nuevos = [...comboItems];
     nuevos.splice(index, 1);
@@ -180,10 +207,10 @@ export default function Productos() {
       <div className="encabezado-pagina">
         <h1 className="titulo-pagina">📦 Depósito y Promos</h1>
         <div className="grupo-botones">
-          <button onClick={() => {setMostrarFormulario(!mostrarFormulario); setMostrarFormCombo(false); setFormNombre(''); setFormPrecio(''); setFormArchivo(null);}} className="btn btn-primario">
+          <button onClick={() => {setMostrarFormulario(!mostrarFormulario); setMostrarFormCombo(false);}} className="btn btn-primario">
             {mostrarFormulario ? '❌ Cancelar' : '➕ Producto Individual'}
           </button>
-          <button onClick={() => {setMostrarFormCombo(!mostrarFormCombo); setMostrarFormulario(false); setFormNombre(''); setFormPrecio(''); setFormArchivo(null); setComboItems([]);}} className="btn btn-exito">
+          <button onClick={() => {setMostrarFormCombo(!mostrarFormCombo); setMostrarFormulario(false);}} className="btn btn-exito">
             {mostrarFormCombo ? '❌ Cancelar' : '✨ Crear Promo/Combo'}
           </button>
         </div>
@@ -195,24 +222,31 @@ export default function Productos() {
           <div className="campo-form grow"><label className="label-form">Nombre</label><input type="text" required value={formNombre} onChange={(e) => setFormNombre(e.target.value)} className="input-form"/></div>
           <div className="campo-form num"><label className="label-form">Precio ($)</label><input type="number" required min="0" step="0.01" value={formPrecio} onChange={(e) => setFormPrecio(Number(e.target.value))} className="input-form"/></div>
           <div className="campo-form num"><label className="label-form">Stock Inicial</label><input type="number" required min="0" value={formStock} onChange={(e) => setFormStock(Number(e.target.value))} className="input-form"/></div>
-          <div className="campo-form num"><label className="label-form">Vence el:</label><input type="date" required value={formVencimiento} onChange={(e) => setFormVencimiento(e.target.value)} className="input-form"/></div>
+          
+          {/* Campo de vencimiento sin 'required' */}
+          <div className="campo-form num">
+            <label className="label-form">Vence el (Opcional):</label>
+            <input type="date" value={formVencimiento} onChange={(e) => setFormVencimiento(e.target.value)} className="input-form"/>
+          </div>
+
           <div className="campo-form grow" style={{ width: '100%' }}><label className="label-form">Foto</label><input type="file" accept="image/*" onChange={(e) => setFormArchivo(e.target.files ? e.target.files[0] : null)} className="input-form"/></div>
           <button type="submit" className="btn btn-primario btn-form" style={{ width: '100%' }} disabled={subiendo}>{subiendo ? 'Guardando...' : 'Guardar Producto'}</button>
         </form>
       )}
 
       {mostrarFormCombo && (
-        <form onSubmit={crearCombo} className="formulario-nuevo" style={{ flexWrap: 'wrap' }}>
-          <h3 style={{width: '100%', marginBottom: '10px'}}>✨ Armar Promoción / Combo</h3>
+        <form onSubmit={crearCombo} className="formulario-nuevo" style={{ flexWrap: 'wrap', backgroundColor: '#fffbe1', borderColor: '#fef08a' }}>
+          <h3 style={{width: '100%', marginBottom: '10px', color: '#854d0e'}}>✨ Armar Promoción / Combo</h3>
           <div className="campo-form grow"><label className="label-form">Nombre de la Promo</label><input type="text" required value={formNombre} onChange={(e) => setFormNombre(e.target.value)} className="input-form" placeholder="Ej: 2x1 Alfajor Jorgito"/></div>
           <div className="campo-form num"><label className="label-form">Precio Final ($)</label><input type="number" required min="0" step="0.01" value={formPrecio} onChange={(e) => setFormPrecio(Number(e.target.value))} className="input-form"/></div>
-          
-          <div style={{width: '100%', padding: '15px', background: 'rgba(255, 255, 255, 0.03)', borderRadius: '8px', border: '1px dashed var(--borde, #ccc)', margin: '10px 0'}}>
+          <div className="campo-form grow" style={{ width: '100%' }}><label className="label-form">Imagen Promocional</label><input type="file" accept="image/*" onChange={(e) => setFormArchivo(e.target.files ? e.target.files[0] : null)} className="input-form"/></div>
+
+          <div style={{width: '100%', padding: '15px', background: '#fff', borderRadius: '8px', border: '1px dashed #ccc', margin: '10px 0'}}>
             <label className="label-form font-fuerte">Productos que componen este combo:</label>
-            <div style={{ display: 'flex', gap: '10px', marginTop: '10px', flexWrap: 'wrap' }}>
-              <select value={productoSeleccionado} onChange={(e) => setProductoSeleccionado(e.target.value)} className="input-form" style={{flexGrow: 1, minWidth: '200px'}}>
+            <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+              <select value={productoSeleccionado} onChange={(e) => setProductoSeleccionado(e.target.value)} className="input-form" style={{flexGrow: 1}}>
                 <option value="">-- Seleccionar producto --</option>
-                {productosUnitarios.map(p => <option key={p.id_producto} value={p.id_producto} style={{color: '#fff'}}>{p.nombre}</option>)}
+                {productosUnitarios.map(p => <option key={p.id_producto} value={p.id_producto}>{p.nombre}</option>)}
               </select>
               <input type="number" min="1" value={cantidadSeleccionada} onChange={(e) => setCantidadSeleccionada(Number(e.target.value))} className="input-form" style={{width: '80px'}}/>
               <button type="button" onClick={agregarItemCombo} className="btn btn-secundario">Agregar</button>
@@ -220,16 +254,14 @@ export default function Productos() {
             
             <ul style={{marginTop: '15px', listStyle: 'none', padding: 0}}>
               {comboItems.map((item, index) => (
-                <li key={index} style={{padding: '8px', background: 'rgba(255, 255, 255, 0.05)', marginBottom: '5px', borderRadius: '5px', display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+                <li key={index} style={{padding: '8px', background: '#f3f4f6', marginBottom: '5px', borderRadius: '5px', display: 'flex', justifyContent: 'space-between'}}>
                   <span>✔️ {item.cantidad}x <b>{item.nombre}</b></span>
-                  <button type="button" onClick={() => eliminarItemCombo(index)} style={{color: '#ef4444', cursor: 'pointer', background: 'none', border: 'none', fontWeight: 'bold'}}>✖</button>
+                  <button type="button" onClick={() => eliminarItemCombo(index)} style={{color: 'red', cursor: 'pointer', background: 'none', border: 'none'}}>✖</button>
                 </li>
               ))}
             </ul>
           </div>
 
-          <div className="campo-form grow" style={{ width: '100%' }}><label className="label-form">Imagen Promocional</label><input type="file" accept="image/*" onChange={(e) => setFormArchivo(e.target.files ? e.target.files[0] : null)} className="input-form"/></div>
-          
           <button type="submit" className="btn btn-exito btn-form" style={{ width: '100%' }} disabled={subiendo}>{subiendo ? 'Guardando...' : 'Crear Promo y Publicar en WhatsApp'}</button>
         </form>
       )}
@@ -272,13 +304,13 @@ export default function Productos() {
                     
                     <td className="texto-izq">
                       {esCombo ? (
-                        <span style={{ fontSize: '0.85rem', color: '#eab308', fontStyle: 'italic' }}>Promo / Combo activo</span>
+                        <span style={{ fontSize: '0.85rem', color: '#854d0e', fontStyle: 'italic' }}>Promo / Combo activo</span>
                       ) : (
                         <>
                           {prod.lotesActivos?.length > 0 ? (
                             prod.lotesActivos.map((l: any, index: number) => (
                               <div key={l.id_lote} style={{ fontSize: '0.85rem', color: index === 0 ? '#b91c1c' : '#4b5563', fontWeight: index === 0 ? 'bold' : 'normal' }}>
-                                {index === 0 && '⚠️ '} {l.cantidad} u. ➡️ {l.fecha_vencimiento.split('-').reverse().join('/')}
+                                {index === 0 && '⚠️ '} {l.cantidad} u. {l.fecha_vencimiento ? `➡️ ${l.fecha_vencimiento.split('-').reverse().join('/')}` : ' (Sin vencimiento)'}
                               </div>
                             ))
                           ) : <span style={{ color: '#9ca3af', fontSize: '0.85rem' }}>Sin lotes activos</span>}
