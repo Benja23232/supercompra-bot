@@ -3,15 +3,23 @@ import { supabase } from '@/lib/supabase';
 
 export async function POST(request: Request) {
   try {
-    const { nombre, precio, stock_fisico, image_url, fecha_vencimiento } = await request.json();
+    // Agregamos 'categoria' a la destructuración de datos
+    const { nombre, precio, stock_fisico, image_url, fecha_vencimiento, categoria } = await request.json();
 
     if (!nombre || precio === undefined || stock_fisico === undefined) {
       return NextResponse.json({ success: false, error: 'Faltan datos obligatorios' }, { status: 400 });
     }
 
+    // Le pasamos la categoría a la inserción (si viene vacío le ponemos 'Sin asignar' por defecto)
     const { data: productoCreado, error } = await supabase
       .from('productos')
-      .insert([{ nombre: nombre.trim(), precio: Number(precio), stock_fisico: Number(stock_fisico), activo: true }])
+      .insert([{ 
+        nombre: nombre.trim(), 
+        precio: Number(precio), 
+        stock_fisico: Number(stock_fisico), 
+        activo: true,
+        categoria: categoria || 'Sin asignar' 
+      }])
       .select()
       .single();
 

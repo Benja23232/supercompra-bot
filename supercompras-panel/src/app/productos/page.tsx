@@ -28,6 +28,7 @@ export default function Productos() {
   const [formStock, setFormStock] = useState<number | ''>('');
   const [formArchivo, setFormArchivo] = useState<File | null>(null);
   const [formVencimiento, setFormVencimiento] = useState(''); 
+  const [formCategoria, setFormCategoria] = useState('Almacén'); // <-- Nuevo estado de categoría
 
   // Formulario Combos/Promos
   const [mostrarFormCombo, setMostrarFormCombo] = useState(false);
@@ -154,10 +155,11 @@ export default function Productos() {
         precio: Number(formPrecio), 
         stock_fisico: Number(formStock), 
         image_url: imageUrl, 
-        fecha_vencimiento: formVencimiento ? formVencimiento : null 
+        fecha_vencimiento: formVencimiento ? formVencimiento : null,
+        categoria: formCategoria // <-- Ahora mandamos la categoría al backend
       })
     });
-    setFormNombre(''); setFormPrecio(''); setFormStock(''); setFormVencimiento(''); setFormArchivo(null);
+    setFormNombre(''); setFormPrecio(''); setFormStock(''); setFormVencimiento(''); setFormArchivo(null); setFormCategoria('Almacén');
     setMostrarFormulario(false); fetchProductos(); setSubiendo(false);
   };
 
@@ -189,7 +191,8 @@ export default function Productos() {
 
     await fetch('/api/combos', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ nombre: formNombre, precio: Number(formPrecio), image_url: imageUrl, productos_combo: comboItems })
+      // Sumé categoría por defecto "Combos y Ofertas" al armar un combo, si tu backend de combos lo acepta.
+      body: JSON.stringify({ nombre: formNombre, precio: Number(formPrecio), image_url: imageUrl, productos_combo: comboItems, categoria: 'Combos y Ofertas' })
     });
 
     setFormNombre(''); setFormPrecio(''); setComboItems([]); setFormArchivo(null);
@@ -223,10 +226,21 @@ export default function Productos() {
           <div className="campo-form num"><label className="label-form">Precio ($)</label><input type="number" required min="0" step="0.01" value={formPrecio} onChange={(e) => setFormPrecio(Number(e.target.value))} className="input-form"/></div>
           <div className="campo-form num"><label className="label-form">Stock Inicial</label><input type="number" required min="0" value={formStock} onChange={(e) => setFormStock(Number(e.target.value))} className="input-form"/></div>
           
-          {/* Campo de vencimiento sin 'required' */}
           <div className="campo-form num">
             <label className="label-form">Vence el (Opcional):</label>
             <input type="date" value={formVencimiento} onChange={(e) => setFormVencimiento(e.target.value)} className="input-form"/>
+          </div>
+
+          {/* Menú de selección de Categoría agregado acá */}
+          <div className="campo-form grow">
+            <label className="label-form">Categoría</label>
+            <select value={formCategoria} onChange={(e) => setFormCategoria(e.target.value)} className="input-form" required>
+              <option value="Almacén">Almacén</option>
+              <option value="Artículos de Limpieza">Artículos de Limpieza</option>
+              <option value="Bebidas sin alcohol">Bebidas sin alcohol</option>
+              <option value="Otros">Otros</option>
+              {/* aca debo agregar las otras categorias */}
+            </select>
           </div>
 
           <div className="campo-form grow" style={{ width: '100%' }}><label className="label-form">Foto</label><input type="file" accept="image/*" onChange={(e) => setFormArchivo(e.target.files ? e.target.files[0] : null)} className="input-form"/></div>
