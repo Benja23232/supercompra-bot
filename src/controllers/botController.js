@@ -16,8 +16,9 @@ const pedidosEsperandoComprobante = new Map();
 // Memoria anti-duplicados para evitar que Meta procese dos veces el mismo mensaje si el servidor se demora
 const mensajesProcesados = new Set(); 
 
-const COSTO_ENVIO = 4000;
-const COSTO_FULL = 1000;
+// --- VARIABLES DE ENVÍO ACTUALIZADAS ---
+const COSTO_FULL = 1500;
+const MINIMO_ENVIO_GRATIS = 40000;
 
 // Función auxiliar para generar y enviar la factura en PDF llamando a la API de Next.js
 async function dispararEnvioFactura(idPedido, numeroCliente) {
@@ -102,18 +103,21 @@ const recibirMensaje = async (req, res) => {
                 pedidosEsperandoDireccion.delete(numeroCliente);
                 pedidosEsperandoTurno.set(numeroCliente, datosPedido.idPedido);
 
+                // Armamos el texto del botón Full según el monto
+                const textoBotonFull = datosPedido.subtotal >= MINIMO_ENVIO_GRATIS ? "🚀 Full (GRATIS)" : `🚀 Full (+$${COSTO_FULL})`;
+
                 const dataBotonesTurno = {
                     messaging_product: "whatsapp",
                     to: numeroCliente,
                     type: "interactive",
                     interactive: {
                         type: "button",
-                        body: { text: `📍 ¡Ubicación GPS guardada con éxito!\n\nSubtotal: $${datosPedido.subtotal}\nEnvío estándar: $${COSTO_ENVIO}\n*Total a abonar: $${datosPedido.total}*\n\n¿En qué turno preferís la entrega?` },
+                        body: { text: `📍 ¡Ubicación GPS guardada!\n\nSubtotal: $${datosPedido.subtotal}\nEnvío Mañana/Tarde: ¡GRATIS! 🎁\n\n¿En qué turno preferís la entrega?` },
                         action: {
                             buttons: [
                                 { type: "reply", reply: { id: "entrega_manana", title: "☀️ Mañana" } },
                                 { type: "reply", reply: { id: "entrega_tarde", title: "🌙 Tarde" } },
-                                { type: "reply", reply: { id: "envio_full", title: "🚀 Full (+$1000)" } }
+                                { type: "reply", reply: { id: "envio_full", title: textoBotonFull } }
                             ]
                         }
                     }
@@ -140,18 +144,21 @@ const recibirMensaje = async (req, res) => {
                 pedidosEsperandoDireccion.delete(numeroCliente);
                 pedidosEsperandoTurno.set(numeroCliente, datosPedido.idPedido);
 
+                // Armamos el texto del botón Full según el monto
+                const textoBotonFull = datosPedido.subtotal >= MINIMO_ENVIO_GRATIS ? "🚀 Full (GRATIS)" : `🚀 Full (+$${COSTO_FULL})`;
+
                 const dataBotonesTurno = {
                     messaging_product: "whatsapp",
                     to: numeroCliente,
                     type: "interactive",
                     interactive: {
                         type: "button",
-                        body: { text: `📍 ¡Dirección guardada! (${direccionMejorada})\n\nSubtotal: $${datosPedido.subtotal}\nEnvío estándar: $${COSTO_ENVIO}\n*Total a abonar: $${datosPedido.total}*\n\n¿En qué turno preferís la entrega?` },
+                        body: { text: `📍 ¡Dirección guardada! (${direccionMejorada})\n\nSubtotal: $${datosPedido.subtotal}\nEnvío Mañana/Tarde: ¡GRATIS! 🎁\n\n¿En qué turno preferís la entrega?` },
                         action: {
                             buttons: [
                                 { type: "reply", reply: { id: "entrega_manana", title: "☀️ Mañana" } },
                                 { type: "reply", reply: { id: "entrega_tarde", title: "🌙 Tarde" } },
-                                { type: "reply", reply: { id: "envio_full", title: "🚀 Full (+$1000)" } }
+                                { type: "reply", reply: { id: "envio_full", title: textoBotonFull } }
                             ]
                         }
                     }
@@ -160,13 +167,11 @@ const recibirMensaje = async (req, res) => {
                 return res.sendStatus(200); 
             }
 
-            // --- NUEVO MENÚ INTERACTIVO DE CATEGORÍAS (DINÁMICO) ---
+            // --- MENÚ INTERACTIVO DE CATEGORÍAS (DINÁMICO) ---
             try {
-                // 1. Traemos los productos con stock (Límite 30 por restricción estricta de WhatsApp)
                 const resProductos = await pool.query("SELECT id_producto, categoria FROM productos WHERE stock_fisico > 0 LIMIT 30");
                 const productosBD = resProductos.rows;
 
-                // 2. Agrupamos los productos por su categoría automáticamente
                 const categoriasMap = {};
                 productosBD.forEach(prod => {
                     const cat = prod.categoria || 'Otros';
@@ -174,13 +179,11 @@ const recibirMensaje = async (req, res) => {
                     categoriasMap[cat].push({ product_retailer_id: prod.id_producto });
                 });
 
-                // 3. Convertimos la agrupación al formato exacto que pide Meta
                 const sectionsDinamicas = Object.keys(categoriasMap).map(nombreCategoria => ({
                     title: nombreCategoria,
                     product_items: categoriasMap[nombreCategoria]
                 }));
 
-                // 4. Armamos y enviamos el mensaje interactivo
                 if (sectionsDinamicas.length > 0) {
                     const dataCatalogo = {
                         messaging_product: "whatsapp",
@@ -193,7 +196,7 @@ const recibirMensaje = async (req, res) => {
                             body: { text: "¡Hola! 👋 Bienvenido.\n\nDesplegá el menú de abajo para ver nuestros artículos por sección y armar tu carrito directamente desde acá." },
                             footer: { text: "Atención automatizada" },
                             action: {
-                                catalog_id: "2194379468072114", // Tu ID de catálogo real
+                                catalog_id: "2194379468072114",
                                 sections: sectionsDinamicas 
                             }
                         }
@@ -203,7 +206,6 @@ const recibirMensaje = async (req, res) => {
                         headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` } 
                     });
                 } else {
-                     // Fallback por si no hay productos con stock
                      const mensajeSinStock = "¡Hola! 👋 Bienvenido a Supercompra.\n\nEn este momento no tenemos productos disponibles. ¡Volvé a consultarnos más tarde!";
                      await enviarMensaje(numeroCliente, mensajeSinStock);
                 }
@@ -302,7 +304,9 @@ const recibirMensaje = async (req, res) => {
                 await pool.query(`INSERT INTO clientes (whatsapp_id, nombre) VALUES ($1, $2) ON CONFLICT (whatsapp_id) DO NOTHING`, [numeroCliente, 'Cliente WhatsApp']);
                 
                 if (detallesParaInsertar.length === 0) return res.sendStatus(200);
-                const totalCarrito = subtotal + COSTO_ENVIO;
+                
+                // El total inicial es simplemente el subtotal (porque el envío de base es gratis)
+                const totalCarrito = subtotal;
 
                 const resPedido = await pool.query(
                     `INSERT INTO pedidos (whatsapp_id, estado, total_compra) VALUES ($1, $2, $3) RETURNING id_pedido`,
@@ -317,6 +321,7 @@ const recibirMensaje = async (req, res) => {
                     );
                 }
 
+                // Guardamos el subtotal en memoria para evaluar el envío Full más adelante
                 pedidosEsperandoDireccion.set(numeroCliente, { idPedido: idNuevoPedido, subtotal: subtotal, total: totalCarrito });
                 
                 await enviarMensaje(numeroCliente, "🛒 ¡Recibimos tu pedido y verificamos que hay stock de todo!\n\nPara el envío, podés hacer dos cosas:\n1️⃣ *Escribirnos la dirección* (Ej: Belgrano 1024)\n2️⃣ Tocar el 📎 (clip) abajo y enviarnos tu *Ubicación actual* de WhatsApp para mayor precisión.");
@@ -334,6 +339,10 @@ const recibirMensaje = async (req, res) => {
                 const idPedidoAsociado = pedidosEsperandoTurno.get(numeroCliente);
                 if (!idPedidoAsociado) return await enviarMensaje(numeroCliente, "La sesión expiró, por favor reenviá tu carrito.");
 
+                // Buscamos cuánto era el carrito para saber si cobrar el Full o no
+                const resTotalPrevio = await pool.query('SELECT total_compra FROM pedidos WHERE id_pedido = $1', [idPedidoAsociado]);
+                const subtotalActual = resTotalPrevio.rows[0].total_compra;
+
                 let nuevoEstado = '';
                 let recargoExtra = 0;
 
@@ -343,7 +352,10 @@ const recibirMensaje = async (req, res) => {
                     nuevoEstado = 'Pendiente - Tarde';
                 } else if (opcion === 'envio_full') {
                     nuevoEstado = 'Pendiente - Full';
-                    recargoExtra = COSTO_FULL; 
+                    // Evaluamos: si la compra no llega al mínimo, cobramos el Full. Si lo supera, es 0 (Gratis).
+                    if (subtotalActual < MINIMO_ENVIO_GRATIS) {
+                        recargoExtra = COSTO_FULL; 
+                    }
                 }
 
                 if (recargoExtra > 0) {
@@ -352,8 +364,8 @@ const recibirMensaje = async (req, res) => {
                     await pool.query('UPDATE pedidos SET estado = $1 WHERE id_pedido = $2', [nuevoEstado, idPedidoAsociado]);
                 }
 
-                const resTotal = await pool.query('SELECT total_compra FROM pedidos WHERE id_pedido = $1', [idPedidoAsociado]);
-                const totalActualizado = resTotal.rows[0].total_compra;
+                const resTotalFinal = await pool.query('SELECT total_compra FROM pedidos WHERE id_pedido = $1', [idPedidoAsociado]);
+                const totalActualizado = resTotalFinal.rows[0].total_compra;
 
                 pedidosEsperandoTurno.delete(numeroCliente);
                 pedidosEsperandoPago.set(numeroCliente, idPedidoAsociado);
@@ -387,7 +399,6 @@ const recibirMensaje = async (req, res) => {
                 await axios.post(`https://graph.facebook.com/v17.0/${process.env.WHATSAPP_PHONE_ID}/messages`, dataMenuPago, { headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` } });
             }
 
-            // --- ACÁ EVALUAMOS LA RESPUESTA DE PAGO ---
             if (opcion === 'pago_mp' || opcion === 'pago_transferencia' || opcion === 'pago_cuenta_dni' || opcion === 'pago_efectivo' || opcion === 'pago_tarjeta_pampa') {
                 const idPedidoAsociado = pedidosEsperandoPago.get(numeroCliente);
                 if (!idPedidoAsociado) return await enviarMensaje(numeroCliente, "Hubo un problema con tu sesión de pago.");
@@ -395,7 +406,6 @@ const recibirMensaje = async (req, res) => {
                 const resPedido = await pool.query('SELECT total_compra FROM pedidos WHERE id_pedido = $1', [idPedidoAsociado]);
                 const totalCompra = resPedido.rows[0].total_compra;
 
-                // --- 1. TRANSFERENCIAS CON COMPROBANTE ---
                 if (opcion === 'pago_transferencia' || opcion === 'pago_cuenta_dni') {
                     const nombreMetodo = opcion === 'pago_cuenta_dni' ? 'Cuenta DNI' : 'Transferencia';
                     
@@ -409,7 +419,6 @@ const recibirMensaje = async (req, res) => {
                     
                     await enviarMensaje(numeroCliente, `🏦 Elegiste abonar con ${nombreMetodo}.\n\nEl total a transferir es *$${totalCompra}*.\n\n*Datos bancarios:*\nAlias: *super.compra.ok*\nCBU/CVU: 0000000000000000000000\n\nPor favor, *envianos la foto del comprobante* por este mismo chat para validarlo automáticamente.`);
 
-                // --- 2. TARJETA BANCO PAMPA (POSNET) ---
                 } else if (opcion === 'pago_tarjeta_pampa') {
                     await pool.query(
                         `INSERT INTO pagos (id_pedido, metodo, estado, monto) VALUES ($1, $2, $3, $4)`,
@@ -417,14 +426,10 @@ const recibirMensaje = async (req, res) => {
                     );
                     
                     await pool.query('UPDATE pedidos SET estado = $1 WHERE id_pedido = $2', ['En Preparación', idPedidoAsociado]);
-                    
                     pedidosEsperandoPago.delete(numeroCliente);
-                    
                     await enviarMensaje(numeroCliente, `💳 ¡Perfecto! Registramos tu pago con *Tarjeta del Banco Pampa*.\n\nEl total es *$${totalCompra}*.\n\nEl repartidor llevará el posnet/lector para que puedas abonar con tu tarjeta al momento de recibir el pedido. ¡Ya lo estamos preparando!`);
-                    
                     await dispararEnvioFactura(idPedidoAsociado, numeroCliente);
 
-                // --- 3. EFECTIVO ---
                 } else if (opcion === 'pago_efectivo') {
                     await pool.query(
                         `INSERT INTO pagos (id_pedido, metodo, estado, monto) VALUES ($1, $2, $3, $4)`,
@@ -432,14 +437,10 @@ const recibirMensaje = async (req, res) => {
                     );
                     
                     await pool.query('UPDATE pedidos SET estado = $1 WHERE id_pedido = $2', ['En Preparación', idPedidoAsociado]);
-                    
                     pedidosEsperandoPago.delete(numeroCliente);
-                    
                     await enviarMensaje(numeroCliente, `💵 ¡Excelente! Registramos tu pedido para pagar en efectivo al recibir.\n\nTené preparados *$${totalCompra}*.\n\nYa pasamos tu pedido al área de preparación para armarlo.`);
-                    
                     await dispararEnvioFactura(idPedidoAsociado, numeroCliente);
 
-                // --- 4. MERCADO PAGO ---
                 } else if (opcion === 'pago_mp') {
                     try {
                         const responsePreference = await preferenceClient.create({
