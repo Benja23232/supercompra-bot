@@ -238,6 +238,10 @@ export default function Productos() {
               <option value="Almacén">Almacén</option>
               <option value="Artículos de Limpieza">Artículos de Limpieza</option>
               <option value="Bebidas sin alcohol">Bebidas sin alcohol</option>
+              <option value="Galletitas y bizcochos">Galletitas y bizcochos</option>
+              <option value="Conservas y frutas en almíbar">Conservas y frutas en almíbar</option>
+              <option value="Higiene dental">Higiene dental</option>
+              <option value="Jugos Tang">Jugos Tang</option>
               <option value="Otros">Otros</option>
               {/* aca debo agregar las otras categorias */}
             </select>
