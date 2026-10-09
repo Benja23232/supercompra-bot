@@ -103,7 +103,6 @@ const recibirMensaje = async (req, res) => {
                 pedidosEsperandoDireccion.delete(numeroCliente);
                 pedidosEsperandoTurno.set(numeroCliente, datosPedido.idPedido);
 
-                // Armamos el texto del botón Full según el monto
                 const textoBotonFull = datosPedido.subtotal >= MINIMO_ENVIO_GRATIS ? "🚀 Full (GRATIS)" : `🚀 Full (+$${COSTO_FULL})`;
 
                 const dataBotonesTurno = {
@@ -144,7 +143,6 @@ const recibirMensaje = async (req, res) => {
                 pedidosEsperandoDireccion.delete(numeroCliente);
                 pedidosEsperandoTurno.set(numeroCliente, datosPedido.idPedido);
 
-                // Armamos el texto del botón Full según el monto
                 const textoBotonFull = datosPedido.subtotal >= MINIMO_ENVIO_GRATIS ? "🚀 Full (GRATIS)" : `🚀 Full (+$${COSTO_FULL})`;
 
                 const dataBotonesTurno = {
@@ -167,50 +165,45 @@ const recibirMensaje = async (req, res) => {
                 return res.sendStatus(200); 
             }
 
-            // --- MENÚ INTERACTIVO DE CATEGORÍAS (DINÁMICO) ---
+            // --- PASO 1: MENÚ DE CATEGORÍAS (DINÁMICO) ---
             try {
-                const resProductos = await pool.query("SELECT id_producto, categoria FROM productos WHERE stock_fisico > 0 LIMIT 30");
-                const productosBD = resProductos.rows;
+                const resCategorias = await pool.query("SELECT DISTINCT categoria FROM productos WHERE stock_fisico > 0 AND categoria IS NOT NULL ORDER BY categoria ASC");
+                
+                if (resCategorias.rows.length > 0) {
+                    const rowsCategorias = resCategorias.rows.map(row => ({
+                        id: `ver_cat_${row.categoria.substring(0, 20)}`, 
+                        title: row.categoria.substring(0, 24) 
+                    }));
 
-                const categoriasMap = {};
-                productosBD.forEach(prod => {
-                    const cat = prod.categoria || 'Otros';
-                    if (!categoriasMap[cat]) categoriasMap[cat] = [];
-                    categoriasMap[cat].push({ product_retailer_id: prod.id_producto });
-                });
-
-                const sectionsDinamicas = Object.keys(categoriasMap).map(nombreCategoria => ({
-                    title: nombreCategoria,
-                    product_items: categoriasMap[nombreCategoria]
-                }));
-
-                if (sectionsDinamicas.length > 0) {
-                    const dataCatalogo = {
+                    const dataMenuCategorias = {
                         messaging_product: "whatsapp",
-                        recipient_type: "individual",
                         to: numeroCliente,
                         type: "interactive",
                         interactive: {
-                            type: "product_list",
-                            header: { type: "text", text: "🛒 Categorías de Supercompra" },
-                            body: { text: "¡Hola! 👋 Bienvenido.\n\nDesplegá el menú de abajo para ver nuestros artículos por sección y armar tu carrito directamente desde acá." },
+                            type: "list",
+                            header: { type: "text", text: "🛒 Supercompra" },
+                            body: { text: "¡Hola! 👋 Bienvenido.\n\nDesplegá el menú de abajo, elegí la góndola que buscás y armá tu carrito." },
                             footer: { text: "Atención automatizada" },
                             action: {
-                                catalog_id: "2194379468072114",
-                                sections: sectionsDinamicas 
+                                button: "Ver secciones",
+                                sections: [
+                                    {
+                                        title: "Nuestras Góndolas",
+                                        rows: rowsCategorias.slice(0, 10) 
+                                    }
+                                ]
                             }
                         }
                     };
 
-                    await axios.post(`https://graph.facebook.com/v17.0/${process.env.WHATSAPP_PHONE_ID}/messages`, dataCatalogo, { 
+                    await axios.post(`https://graph.facebook.com/v17.0/${process.env.WHATSAPP_PHONE_ID}/messages`, dataMenuCategorias, { 
                         headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` } 
                     });
                 } else {
-                     const mensajeSinStock = "¡Hola! 👋 Bienvenido a Supercompra.\n\nEn este momento no tenemos productos disponibles. ¡Volvé a consultarnos más tarde!";
-                     await enviarMensaje(numeroCliente, mensajeSinStock);
+                     await enviarMensaje(numeroCliente, "¡Hola! 👋 Bienvenido a Supercompra.\n\nEn este momento estamos reponiendo stock. ¡Volvé a consultarnos más tarde!");
                 }
-            } catch (errorCatalogo) {
-                console.error("Error armando catálogo dinámico:", errorCatalogo);
+            } catch (errorMenu) {
+                console.error("Error armando menú de categorías:", errorMenu);
             }
         }
 
@@ -305,7 +298,6 @@ const recibirMensaje = async (req, res) => {
                 
                 if (detallesParaInsertar.length === 0) return res.sendStatus(200);
                 
-                // El total inicial es simplemente el subtotal (porque el envío de base es gratis)
                 const totalCarrito = subtotal;
 
                 const resPedido = await pool.query(
@@ -321,7 +313,6 @@ const recibirMensaje = async (req, res) => {
                     );
                 }
 
-                // Guardamos el subtotal en memoria para evaluar el envío Full más adelante
                 pedidosEsperandoDireccion.set(numeroCliente, { idPedido: idNuevoPedido, subtotal: subtotal, total: totalCarrito });
                 
                 await enviarMensaje(numeroCliente, "🛒 ¡Recibimos tu pedido y verificamos que hay stock de todo!\n\nPara el envío, podés hacer dos cosas:\n1️⃣ *Escribirnos la dirección* (Ej: Belgrano 1024)\n2️⃣ Tocar el 📎 (clip) abajo y enviarnos tu *Ubicación actual* de WhatsApp para mayor precisión.");
@@ -335,11 +326,53 @@ const recibirMensaje = async (req, res) => {
         if (message.type === 'interactive') {
             let opcion = message.interactive.type === 'button_reply' ? message.interactive.button_reply.id : message.interactive.list_reply.id;
 
+            // --- PASO 2: MOSTRAR PRODUCTOS DE LA CATEGORÍA ELEGIDA ---
+            if (opcion.startsWith('ver_cat_')) {
+                const categoriaElegida = opcion.replace('ver_cat_', '');
+                
+                try {
+                    const resProductos = await pool.query("SELECT id_producto, categoria FROM productos WHERE categoria ILIKE $1 AND stock_fisico > 0 LIMIT 30", [`${categoriaElegida}%`]);
+                    
+                    if (resProductos.rows.length > 0) {
+                        const nombreCategoriaReal = resProductos.rows[0].categoria;
+                        const productItems = resProductos.rows.map(p => ({ product_retailer_id: p.id_producto }));
+                        
+                        const dataListaProductos = {
+                            messaging_product: "whatsapp",
+                            recipient_type: "individual",
+                            to: numeroCliente,
+                            type: "interactive",
+                            interactive: {
+                                type: "product_list",
+                                header: { type: "text", text: `🛒 ${nombreCategoriaReal.substring(0, 60)}` },
+                                body: { text: `Acá tenés nuestra mercadería de la sección *${nombreCategoriaReal}*.\n\nAgregá lo que necesites al carrito.\n\n💡 _Para ver otra sección, escribime "Categorías"._` },
+                                action: {
+                                    catalog_id: "2194379468072114",
+                                    sections: [
+                                        {
+                                            title: nombreCategoriaReal.substring(0, 24),
+                                            product_items: productItems
+                                        }
+                                    ]
+                                }
+                            }
+                        };
+                        await axios.post(`https://graph.facebook.com/v17.0/${process.env.WHATSAPP_PHONE_ID}/messages`, dataListaProductos, { 
+                            headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` } 
+                        });
+                    } else {
+                        await enviarMensaje(numeroCliente, "No hay stock disponible en esta sección por el momento.");
+                    }
+                } catch (errorCatalogo) {
+                    console.error("Error enviando productos de categoría:", errorCatalogo);
+                }
+                return res.sendStatus(200); 
+            }
+
             if (opcion === 'entrega_manana' || opcion === 'entrega_tarde' || opcion === 'envio_full') {
                 const idPedidoAsociado = pedidosEsperandoTurno.get(numeroCliente);
                 if (!idPedidoAsociado) return await enviarMensaje(numeroCliente, "La sesión expiró, por favor reenviá tu carrito.");
 
-                // Buscamos cuánto era el carrito para saber si cobrar el Full o no
                 const resTotalPrevio = await pool.query('SELECT total_compra FROM pedidos WHERE id_pedido = $1', [idPedidoAsociado]);
                 const subtotalActual = resTotalPrevio.rows[0].total_compra;
 
@@ -352,7 +385,6 @@ const recibirMensaje = async (req, res) => {
                     nuevoEstado = 'Pendiente - Tarde';
                 } else if (opcion === 'envio_full') {
                     nuevoEstado = 'Pendiente - Full';
-                    // Evaluamos: si la compra no llega al mínimo, cobramos el Full. Si lo supera, es 0 (Gratis).
                     if (subtotalActual < MINIMO_ENVIO_GRATIS) {
                         recargoExtra = COSTO_FULL; 
                     }
@@ -470,4 +502,5 @@ const recibirMensaje = async (req, res) => {
     }
 };
 
-module.exports = { verificarToken, recibirMensaje };
+_export = { verificarToken, recibirMensaje };
+module.exports = _export;
