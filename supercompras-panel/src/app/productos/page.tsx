@@ -28,7 +28,7 @@ export default function Productos() {
   const [formStock, setFormStock] = useState<number | ''>('');
   const [formArchivo, setFormArchivo] = useState<File | null>(null);
   const [formVencimiento, setFormVencimiento] = useState(''); 
-  const [formCategoria, setFormCategoria] = useState('Almacén'); // <-- Nuevo estado de categoría
+  const [formCategoria, setFormCategoria] = useState('Almacén'); // Categoría original por defecto
 
   // Formulario Combos/Promos
   const [mostrarFormCombo, setMostrarFormCombo] = useState(false);
@@ -81,7 +81,7 @@ export default function Productos() {
     } else {
       router.push('/'); 
     }
-  }, []);
+  }, [router]); // Agregado router a las dependencias por buena práctica de React
 
   const activarEdicion = (prod: any) => {
     setEditandoId(prod.id_producto);
@@ -156,7 +156,7 @@ export default function Productos() {
         stock_fisico: Number(formStock), 
         image_url: imageUrl, 
         fecha_vencimiento: formVencimiento ? formVencimiento : null,
-        categoria: formCategoria // <-- Ahora mandamos la categoría al backend
+        categoria: formCategoria
       })
     });
     setFormNombre(''); setFormPrecio(''); setFormStock(''); setFormVencimiento(''); setFormArchivo(null); setFormCategoria('Almacén');
@@ -191,7 +191,6 @@ export default function Productos() {
 
     await fetch('/api/combos', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      // Sumé categoría por defecto "Combos y Ofertas" al armar un combo, si tu backend de combos lo acepta.
       body: JSON.stringify({ nombre: formNombre, precio: Number(formPrecio), image_url: imageUrl, productos_combo: comboItems, categoria: 'Combos y Ofertas' })
     });
 
@@ -231,10 +230,10 @@ export default function Productos() {
             <input type="date" value={formVencimiento} onChange={(e) => setFormVencimiento(e.target.value)} className="input-form"/>
           </div>
 
-          {/* Menú de selección de Categoría agregado acá */}
           <div className="campo-form grow">
             <label className="label-form">Categoría</label>
             <select value={formCategoria} onChange={(e) => setFormCategoria(e.target.value)} className="input-form" required>
+              {/* Tus categorías originales */}
               <option value="Almacén">Almacén</option>
               <option value="Artículos de Limpieza">Artículos de Limpieza</option>
               <option value="Bebidas sin alcohol">Bebidas sin alcohol</option>
@@ -243,7 +242,20 @@ export default function Productos() {
               <option value="Higiene dental">Higiene dental</option>
               <option value="Jugos Tang">Jugos Tang</option>
               <option value="Otros">Otros</option>
-              {/* aca debo agregar las otras categorias */}
+              
+              {/* Categorías nuevas que no estaban en tu panel */}
+              <option value="Aceites y Vinagres">Aceites y Vinagres</option>
+              <option value="Bebidas con Alcohol">Bebidas con Alcohol</option>
+              <option value="Condimentos en Sobre">Condimentos en Sobre</option>
+              <option value="Cuidado Personal">Cuidado Personal</option>
+              <option value="Fideos, Arroz y Harinas">Fideos, Arroz y Harinas</option>
+              <option value="Golosinas y Postres">Golosinas y Postres</option>
+              <option value="Infusiones">Infusiones</option>
+              <option value="Insecticidas">Insecticidas</option>
+              <option value="Lácteos y Snacks">Lácteos y Snacks</option>
+              <option value="Mascotas">Mascotas</option>
+              <option value="Repostería y Dulces">Repostería y Dulces</option>
+              <option value="Salsas y Conservas">Salsas y Conservas</option>
             </select>
           </div>
 
