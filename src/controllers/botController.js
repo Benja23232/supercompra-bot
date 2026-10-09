@@ -8,15 +8,17 @@ const { MercadoPagoConfig, Preference } = require('mercadopago');
 const client = new MercadoPagoConfig({ accessToken: process.env.MP_ACCESS_TOKEN });
 const preferenceClient = new Preference(client);
 
+// --- MEMORIAS Y ESTADOS DE SESIÓN ---
+const carritosActivos = new Map();          // numeroCliente -> [{ id_producto, nombre, precio, cantidad }]
+const productosMostrados = new Map();       // numeroCliente -> [ array de productos de la última categoría vista ]
 const pedidosEsperandoDireccion = new Map(); 
 const pedidosEsperandoTurno = new Map();
 const pedidosEsperandoPago = new Map();
 const pedidosEsperandoComprobante = new Map(); 
 
-// Memoria anti-duplicados para evitar que Meta procese dos veces el mismo mensaje si el servidor se demora
+// Memoria anti-duplicados
 const mensajesProcesados = new Set(); 
 
-// --- VARIABLES DE ENVÍO ACTUALIZADAS ---
 const COSTO_FULL = 1500;
 const MINIMO_ENVIO_GRATIS = 40000;
 
@@ -78,19 +80,14 @@ const recibirMensaje = async (req, res) => {
         const message = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
         if (!message) return res.sendStatus(200);
 
-        // --- FILTRO ANTI-DUPLICADOS (IDEMPOTENCIA) ---
-        if (mensajesProcesados.has(message.id)) {
-            console.log(`⚠️ Mensaje duplicado detectado de Meta (ID: ${message.id}). Omitiendo...`);
-            return res.sendStatus(200);
-        }
+        // --- FILTRO ANTI-DUPLICADOS ---
+        if (mensajesProcesados.has(message.id)) return res.sendStatus(200);
         mensajesProcesados.add(message.id);
-        
         if (mensajesProcesados.size > 500) mensajesProcesados.clear();
-        // ---------------------------------------------
 
         let numeroCliente = message.from.startsWith("549") ? message.from.replace("549", "54") : message.from;
 
-        // --- MANEJO DE UBICACIÓN (GPS WHATSAPP) ---
+        // --- MANEJO DE UBICACIÓN (GPS) ---
         if (message.type === 'location') {
             if (pedidosEsperandoDireccion.has(numeroCliente)) {
                 const lat = message.location.latitude;
@@ -126,13 +123,48 @@ const recibirMensaje = async (req, res) => {
             }
         }
 
-        // 1. MANEJO DE MENSAJES DE TEXTO
-        if (message.type === 'text') {
-            const textoRecibido = message.text.body;
+        // --- MANEJO DE IMÁGENES (OCR COMPROBANTES) ---
+        if (message.type === 'image') {
+            if (pedidosEsperandoComprobante.has(numeroCliente)) {
+                const datosPago = pedidosEsperandoComprobante.get(numeroCliente);
+                await enviarMensaje(numeroCliente, "📸 Comprobante recibido. Analizando pago con IA...");
 
+                try {
+                    const imageId = message.image.id;
+                    const resMedia = await axios.get(`https://graph.facebook.com/v17.0/${imageId}`, { headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` } });
+                    const responseDescarga = await axios.get(resMedia.data.url, { responseType: 'arraybuffer', headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` } });
+                    const imageBuffer = Buffer.from(responseDescarga.data, 'binary');
+
+                    const { data: { text } } = await Tesseract.recognize(imageBuffer, 'spa');
+                    const montoString = String(datosPago.totalEsperado);
+                    
+                    if (text.includes(montoString)) {
+                        await pool.query('UPDATE pagos SET estado = $1 WHERE id_pedido = $2', ['Aprobado', datosPago.idPedido]);
+                        await pool.query('UPDATE pedidos SET estado = $1 WHERE id_pedido = $2', ['En Preparación', datosPago.idPedido]);
+                        pedidosEsperandoComprobante.delete(numeroCliente);
+                        await enviarMensaje(numeroCliente, `✅ ¡Pago validado con éxito!\n\nImporte de *$${montoString}* confirmado. Pedido en preparación.`);
+                        await dispararEnvioFactura(datosPago.idPedido, numeroCliente);
+                    } else {
+                        await enviarMensaje(numeroCliente, `⚠️ No pude validar el monto exacto de *$${montoString}* en la foto. Un asesor lo revisará manualmente.`);
+                        pedidosEsperandoComprobante.delete(numeroCliente);
+                    }
+                } catch (errorOCR) {
+                    console.error("Error OCR:", errorOCR);
+                    await enviarMensaje(numeroCliente, "Error al leer la foto. Un asesor validará el pago manualmente.");
+                    pedidosEsperandoComprobante.delete(numeroCliente);
+                }
+                return res.sendStatus(200);
+            }
+        }
+
+        // --- MANEJO DE MENSAJES DE TEXTO Y COMANDOS ---
+        if (message.type === 'text') {
+            const textoRecibido = message.text.body.trim();
+            const textoLower = textoRecibido.toLowerCase();
+
+            // 1. Si está esperando dirección
             if (pedidosEsperandoDireccion.has(numeroCliente)) {
-                let direccionMejorada = textoRecibido.trim();
-                
+                let direccionMejorada = textoRecibido;
                 if (!direccionMejorada.toLowerCase().includes('tres lomas')) {
                     direccionMejorada = `${direccionMejorada}, Tres Lomas`;
                 }
@@ -165,209 +197,166 @@ const recibirMensaje = async (req, res) => {
                 return res.sendStatus(200); 
             }
 
-            // --- PASO 1: MENÚ DE CATEGORÍAS (DINÁMICO) ---
-            try {
-                const resCategorias = await pool.query("SELECT DISTINCT categoria FROM productos WHERE stock_fisico > 0 AND categoria IS NOT NULL ORDER BY categoria ASC");
-                
-                if (resCategorias.rows.length > 0) {
-                    const rowsCategorias = resCategorias.rows.map(row => ({
-                        id: `ver_cat_${row.categoria.substring(0, 20)}`, 
-                        title: row.categoria.substring(0, 24) 
-                    }));
-
-                    const dataMenuCategorias = {
-                        messaging_product: "whatsapp",
-                        to: numeroCliente,
-                        type: "interactive",
-                        interactive: {
-                            type: "list",
-                            header: { type: "text", text: "🛒 Supercompra" },
-                            body: { text: "¡Hola! 👋 Bienvenido.\n\nDesplegá el menú de abajo, elegí la góndola que buscás y armá tu carrito." },
-                            footer: { text: "Atención automatizada" },
-                            action: {
-                                button: "Ver secciones",
-                                sections: [
-                                    {
-                                        title: "Nuestras Góndolas",
-                                        rows: rowsCategorias.slice(0, 10) 
-                                    }
-                                ]
-                            }
-                        }
-                    };
-
-                    await axios.post(`https://graph.facebook.com/v17.0/${process.env.WHATSAPP_PHONE_ID}/messages`, dataMenuCategorias, { 
-                        headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` } 
-                    });
+            // 2. Comando: VER CARRITO
+            if (textoLower === 'carrito' || textoLower === 'ver carrito') {
+                const carrito = carritosActivos.get(numeroCliente) || [];
+                if (carrito.length === 0) {
+                    await enviarMensaje(numeroCliente, "🛒 Tu carrito está vacío.\n\nEscribí *menu* o *categorias* para ver las góndolas.");
                 } else {
-                     await enviarMensaje(numeroCliente, "¡Hola! 👋 Bienvenido a Supercompra.\n\nEn este momento estamos reponiendo stock. ¡Volvé a consultarnos más tarde!");
-                }
-            } catch (errorMenu) {
-                console.error("Error armando menú de categorías:", errorMenu);
-            }
-        }
-
-        // 2. MANEJO DE IMÁGENES (OCR)
-        if (message.type === 'image') {
-            if (pedidosEsperandoComprobante.has(numeroCliente)) {
-                const datosPago = pedidosEsperandoComprobante.get(numeroCliente);
-                await enviarMensaje(numeroCliente, "📸 Comprobante recibido. Estoy analizando la imagen con Inteligencia Artificial para verificar el pago, dame un momento...");
-
-                try {
-                    const imageId = message.image.id;
-                    const resMedia = await axios.get(`https://graph.facebook.com/v17.0/${imageId}`, { 
-                        headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` } 
+                    let mensajeCarrito = "🛒 *Tu Carrito Actual:*\n\n";
+                    let total = 0;
+                    carrito.forEach((item, index) => {
+                        const subtotalItem = item.precio * item.cantidad;
+                        total += subtotalItem;
+                        mensajeSesion = `${index + 1}. *${item.nombre}* x${item.cantidad} - $${subtotalItem}\n`;
+                        mensajeCarrito += mensajeSesion;
                     });
-                    
-                    const responseDescarga = await axios.get(resMedia.data.url, { 
-                        responseType: 'arraybuffer', 
-                        headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` } 
-                    });
-                    const imageBuffer = Buffer.from(responseDescarga.data, 'binary');
-
-                    const { data: { text } } = await Tesseract.recognize(imageBuffer, 'spa');
-                    const montoString = String(datosPago.totalEsperado);
-                    
-                    if (text.includes(montoString)) {
-                        await pool.query('UPDATE pagos SET estado = $1 WHERE id_pedido = $2', ['Aprobado', datosPago.idPedido]);
-                        await pool.query('UPDATE pedidos SET estado = $1 WHERE id_pedido = $2', ['En Preparación', datosPago.idPedido]);
-                        
-                        pedidosEsperandoComprobante.delete(numeroCliente);
-                        await enviarMensaje(numeroCliente, `✅ ¡Pago validado automáticamente con éxito!\n\nEl importe de *$${montoString}* fue confirmado. Tu pedido ya pasó al área de preparación para ser despachado.`);
-                        
-                        await dispararEnvioFactura(datosPago.idPedido, numeroCliente);
-
-                    } else {
-                        await enviarMensaje(numeroCliente, `⚠️ No pude validar el monto exacto de *$${montoString}* en la foto del comprobante.\n\nNo te preocupes, un asesor lo revisará manualmente desde el sistema en los próximos minutos para confirmar tu pedido.`);
-                        pedidosEsperandoComprobante.delete(numeroCliente);
-                    }
-
-                } catch (errorOCR) {
-                    console.error("Error analizando imagen:", errorOCR);
-                    await enviarMensaje(numeroCliente, "Tuvimos un problema técnico al leer la foto. Un asesor validará tu pago de forma manual en el sistema.");
-                    pedidosEsperandoComprobante.delete(numeroCliente);
+                    mensajeCarrito += `\n*Total estimado: $${total}*\n\nPara confirmar y pedir escribí: *finalizar*`;
+                    await enviarMensaje(numeroCliente, mensajeCarrito);
                 }
                 return res.sendStatus(200);
             }
-        }
 
-        // 3. RECEPCIÓN DEL CARRITO (CON VALIDACIÓN DE STOCK)
-        if (message.type === 'order') {
-            const itemsCatalogo = message.order.product_items;
-            try {
-                let hayProblemasDeStock = false;
-                let mensajeStockFaltante = "¡Hola! Revisamos tu pedido y tenemos un problema con el stock actual de estos productos:\n\n";
-                let subtotal = 0;
-                const detallesParaInsertar = [];
-                
-                for (let item of itemsCatalogo) {
-                    const idProductoMeta = item.product_retailer_id; 
-                    const quantity = item.quantity;
-                    
-                    const resProd = await pool.query('SELECT nombre, precio, stock_fisico FROM productos WHERE id_producto = $1', [idProductoMeta]);
-                    
-                    if (resProd.rows.length > 0) {
-                        const producto = resProd.rows[0];
-                        const precioActual = producto.precio;
-                        const stockActual = producto.stock_fisico || 0;
-                        const nombreProd = producto.nombre;
+            // 3. Comando: AGREGAR PRODUCTO (Ej: agregar 1 2)
+            if (textoLower.startsWith('agregar ')) {
+                const partes = textoRecibido.split(' ');
+                const indexProd = parseInt(partes[1]) - 1;
+                const cantidad = parseInt(partes[2]) || 1;
 
-                        if (stockActual <= 0) {
-                            mensajeStockFaltante += `❌ *${nombreProd}*: No tenemos stock en este momento.\n`;
-                            hayProblemasDeStock = true;
-                        } else if (stockActual < quantity) {
-                            mensajeStockFaltante += `⚠️ *${nombreProd}*: Solo nos quedan ${stockActual} unidades (pediste ${quantity}).\n`;
-                            hayProblemasDeStock = true;
-                        } else {
-                            subtotal += (precioActual * quantity);
-                            detallesParaInsertar.push({ id: idProductoMeta, cantidad: quantity, precio: precioActual });
-                        }
-                    } else {
-                        mensajeStockFaltante += `❌ Producto no encontrado en nuestro sistema.\n`;
-                        hayProblemasDeStock = true;
-                    }
-                }
-
-                if (hayProblemasDeStock) {
-                    mensajeStockFaltante += "\nPor favor, ingresá nuevamente al catálogo y armá tu carrito ajustando las cantidades. ¡Perdón por las molestias! 🙏";
-                    await enviarMensaje(numeroCliente, mensajeStockFaltante);
+                const listaUltima = productosMostrados.get(numeroCliente);
+                if (!listaUltima || listaUltima.length === 0 || isNaN(indexProd) || !listaUltima[indexProd]) {
+                    await enviarMensaje(numeroCliente, "⚠️ No encontré ese producto. Por favor, volvé a ver la categoría y usá el número correcto (Ej: `agregar 1 2`).");
                     return res.sendStatus(200);
                 }
 
-                await pool.query(`INSERT INTO clientes (whatsapp_id, nombre) VALUES ($1, $2) ON CONFLICT (whatsapp_id) DO NOTHING`, [numeroCliente, 'Cliente WhatsApp']);
-                
-                if (detallesParaInsertar.length === 0) return res.sendStatus(200);
-                
-                const totalCarrito = subtotal;
+                const prodSeleccionado = listaUltima[indexProd];
 
-                const resPedido = await pool.query(
-                    `INSERT INTO pedidos (whatsapp_id, estado, total_compra) VALUES ($1, $2, $3) RETURNING id_pedido`,
-                    [numeroCliente, 'Pendiente', totalCarrito]
-                );
-                const idNuevoPedido = resPedido.rows[0].id_pedido;
-
-                for (let detalle of detallesParaInsertar) {
-                    await pool.query(
-                        `INSERT INTO detalle_pedidos (id_pedido, id_producto, cantidad, precio_congelado) VALUES ($1, $2, $3, $4)`,
-                        [idNuevoPedido, detalle.id, detalle.cantidad, detalle.precio]
-                    );
+                if (prodSeleccionado.stock_fisico < cantidad) {
+                    await enviarMensaje(numeroCliente, `⚠️ Stock insuficiente. Solo nos quedan ${prodSeleccionado.stock_fisico} unidades de *${prodSeleccionado.nombre}*.`);
+                    return res.sendStatus(200);
                 }
 
-                pedidosEsperandoDireccion.set(numeroCliente, { idPedido: idNuevoPedido, subtotal: subtotal, total: totalCarrito });
+                if (!carritosActivos.has(numeroCliente)) {
+                    carritosActivos.set(numeroCliente, []);
+                }
+                const carrito = carritosActivos.get(numeroCliente);
                 
-                await enviarMensaje(numeroCliente, "🛒 ¡Recibimos tu pedido y verificamos que hay stock de todo!\n\nPara el envío, podés hacer dos cosas:\n1️⃣ *Escribirnos la dirección* (Ej: Belgrano 1024)\n2️⃣ Tocar el 📎 (clip) abajo y enviarnos tu *Ubicación actual* de WhatsApp para mayor precisión.");
+                // Vemos si ya estaba en el carrito para sumar cantidad
+                const existente = carrito.find(p => p.id_producto === prodSeleccionado.id_producto);
+                if (existente) {
+                    existente.cantidad += cantidad;
+                } else {
+                    carrito.push({
+                        id_producto: prodSeleccionado.id_producto,
+                        nombre: prodSeleccionado.nombre,
+                        precio: prodSeleccionado.precio,
+                        cantidad: cantidad
+                    });
+                }
 
-            } catch (errorBD) {
-                console.error("Error BD Carrito:", errorBD);
+                await enviarMensaje(numeroCliente, `✅ Agregado al carrito: *${cantidad}x ${prodSeleccionado.nombre}*.\n\nEscribí *carrito* para ver tu pedido o seguí comprando.`);
+                return res.sendStatus(200);
+            }
+
+            // 4. Comando: FINALIZAR COMPRA
+            if (textoLower === 'finalizar' || textoLower === 'comprar') {
+                const carrito = carritosActivos.get(numeroCliente) || [];
+                if (carrito.length === 0) {
+                    await enviarMensaje(numeroCliente, "🛒 Tu carrito está vacío. Agregá productos antes de finalizar.");
+                    return res.sendStatus(200);
+                }
+
+                try {
+                    let subtotal = 0;
+                    for (let item of carrito) {
+                        subtotal += (item.precio * item.cantidad);
+                    }
+
+                    await pool.query(`INSERT INTO clientes (whatsapp_id, nombre) VALUES ($1, $2) ON CONFLICT (whatsapp_id) DO NOTHING`, [numeroCliente, 'Cliente WhatsApp']);
+                    
+                    const resPedido = await pool.query(
+                        `INSERT INTO pedidos (whatsapp_id, estado, total_compra) VALUES ($1, $2, $3) RETURNING id_pedido`,
+                        [numeroCliente, 'Pendiente', subtotal]
+                    );
+                    const idNuevoPedido = resPedido.rows[0].id_pedido;
+
+                    for (let item of carrito) {
+                        await pool.query(
+                            `INSERT INTO detalle_pedidos (id_pedido, id_producto, cantidad, precio_congelado) VALUES ($1, $2, $3, $4)`,
+                            [idNuevoPedido, item.id_producto, item.cantidad, item.precio]
+                        );
+                    }
+
+                    // Vaciamos el carrito activo
+                    carritosActivos.delete(numeroCliente);
+
+                    pedidosEsperandoDireccion.set(numeroCliente, { idPedido: idNuevoPedido, subtotal: subtotal, total: subtotal });
+                    
+                    await enviarMensaje(numeroCliente, "🛒 ¡Recibimos tu pedido!\n\nPara el envío, por favor:\n1️⃣ *Escribinos tu dirección* (Ej: Belgrano 1024)\n2️⃣ O tocá el 📎 (clip) abajo y envianos tu *Ubicación actual* de WhatsApp.");
+
+                } catch (errorFinalizar) {
+                    console.error("Error al finalizar pedido:", errorFinalizar);
+                    await enviarMensaje(numeroCliente, "Hubo un error al procesar tu pedido. Por favor, intententalo de nuevo.");
+                }
+                return res.sendStatus(200);
+            }
+
+            // 5. Si elige una categoría por número o nombre (o escribe Hola / Menu)
+            try {
+                const resCats = await pool.query("SELECT DISTINCT categoria FROM productos WHERE stock_fisico > 0 AND categoria IS NOT NULL ORDER BY categoria ASC");
+                const categorias = resCats.rows.map(r => r.categoria);
+
+                // Comprobamos si el usuario escribió el nombre de una categoría o un número de categoría
+                let catElegida = null;
+                const numCat = parseInt(textoRecibido);
+
+                if (!isNaN(numCat) && numCat >= 1 && numCat <= categorias.length) {
+                    catElegida = categorias[numCat - 1];
+                } else {
+                    catElegida = categorias.find(c => c.toLowerCase() === textoLower);
+                }
+
+                if (catElegida) {
+                    // Mostramos los productos de esa categoría
+                    const resProds = await pool.query("SELECT id_producto, nombre, precio, stock_fisico FROM productos WHERE categoria ILIKE $1 AND stock_fisico > 0 ORDER BY nombre ASC", [catElegida]);
+                    const productos = resProds.rows;
+
+                    if (productos.length === 0) {
+                        await enviarMensaje(numeroCliente, `No hay stock disponible en la categoría *${catElegida}*.`);
+                        return res.sendStatus(200);
+                    }
+
+                    productosMostrados.set(numeroCliente, productos);
+
+                    let msgProds = `📦 *Góndola: ${catElegida}*\n\n`;
+                    productos.forEach((p, idx) => {
+                        msgProds += `${idx + 1}. *${p.nombre}* - $${p.precio} _(Stock: ${p.stock_fisico})_\n`;
+                    });
+
+                    msgProds += `\n💡 *Para comprar escribí:* \`agregar [número] [cantidad]\`\n*(Ej: \`agregar 1 2\` para llevar 2 unidades del producto 1)*\n\nVer tu carrito escribiendo: *carrito*\nVer categorías escribiendo: *menu*`;
+                    
+                    await enviarMensaje(numeroCliente, msgProds);
+                    return res.sendStatus(200);
+                }
+
+                // Si mandó "hola", "menu", "categorias" o cualquier otra cosa: Mostramos el menú principal de categorías
+                let msgMenu = "🛒 *¡Bienvenido a Supercompra!*\n\nElegí una góndola escribiendo su número o nombre:\n\n";
+                categorias.forEach((cat, idx) => {
+                    msgMenu += `${idx + 1}️⃣ ${cat}\n`;
+                });
+                msgMenu += `\n*Comandos útiles:*\n• Escribí un número o categoría para ver productos\n• *carrito* (para ver tu pedido)\n• *finalizar* (para terminar la compra)`;
+
+                await enviarMensaje(numeroCliente, msgMenu);
+
+            } catch (errorMenuTexto) {
+                console.error("Error en menú de texto:", errorMenuTexto);
+                await enviarMensaje(numeroCliente, "¡Hola! Bienvenido a Supercompra. Escribí *menu* para ver las categorías.");
             }
         }
 
-        // 4. CAPTURA DE BOTONES Y LISTAS
+        // --- 4. CAPTURA DE BOTONES INTERACTIVOS (TURNOS Y PAGOS) ---
         if (message.type === 'interactive') {
             let opcion = message.interactive.type === 'button_reply' ? message.interactive.button_reply.id : message.interactive.list_reply.id;
-
-            // --- PASO 2: MOSTRAR PRODUCTOS DE LA CATEGORÍA ELEGIDA ---
-            if (opcion.startsWith('ver_cat_')) {
-                const categoriaElegida = opcion.replace('ver_cat_', '');
-                
-                try {
-                    const resProductos = await pool.query("SELECT id_producto, categoria FROM productos WHERE categoria ILIKE $1 AND stock_fisico > 0 LIMIT 30", [`${categoriaElegida}%`]);
-                    
-                    if (resProductos.rows.length > 0) {
-                        const nombreCategoriaReal = resProductos.rows[0].categoria;
-                        const productItems = resProductos.rows.map(p => ({ product_retailer_id: p.id_producto }));
-                        
-                        const dataListaProductos = {
-                            messaging_product: "whatsapp",
-                            recipient_type: "individual",
-                            to: numeroCliente,
-                            type: "interactive",
-                            interactive: {
-                                type: "product_list",
-                                header: { type: "text", text: `🛒 ${nombreCategoriaReal.substring(0, 60)}` },
-                                body: { text: `Acá tenés nuestra mercadería de la sección *${nombreCategoriaReal}*.\n\nAgregá lo que necesites al carrito.\n\n💡 _Para ver otra sección, escribime "Categorías"._` },
-                                action: {
-                                    catalog_id: "2194379468072114",
-                                    sections: [
-                                        {
-                                            title: nombreCategoriaReal.substring(0, 24),
-                                            product_items: productItems
-                                        }
-                                    ]
-                                }
-                            }
-                        };
-                        await axios.post(`https://graph.facebook.com/v17.0/${process.env.WHATSAPP_PHONE_ID}/messages`, dataListaProductos, { 
-                            headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` } 
-                        });
-                    } else {
-                        await enviarMensaje(numeroCliente, "No hay stock disponible en esta sección por el momento.");
-                    }
-                } catch (errorCatalogo) {
-                    console.error("Error enviando productos de categoría:", errorCatalogo);
-                }
-                return res.sendStatus(200); 
-            }
 
             if (opcion === 'entrega_manana' || opcion === 'entrega_tarde' || opcion === 'envio_full') {
                 const idPedidoAsociado = pedidosEsperandoTurno.get(numeroCliente);
@@ -409,7 +398,7 @@ const recibirMensaje = async (req, res) => {
                     interactive: {
                         type: "list",
                         header: { type: "text", text: "💳 Métodos de Pago" },
-                        body: { text: `Turno agendado. El total de tu pedido es *$${totalActualizado}*.\n\nPor favor elegí cómo preferís abonarlo:` },
+                        body: { text: `Turno agendado. El total de tu pedido es *$${totalActualizado}*.\n\nElegí cómo preferís abonarlo:` },
                         footer: { text: "Supercompra" },
                         action: {
                             button: "Elegir pago",
@@ -446,31 +435,22 @@ const recibirMensaje = async (req, res) => {
                         [idPedidoAsociado, nombreMetodo, 'Pendiente de Verificación', totalCompra]
                     );
                     pedidosEsperandoPago.delete(numeroCliente);
-                    
                     pedidosEsperandoComprobante.set(numeroCliente, { idPedido: idPedidoAsociado, totalEsperado: totalCompra });
                     
-                    await enviarMensaje(numeroCliente, `🏦 Elegiste abonar con ${nombreMetodo}.\n\nEl total a transferir es *$${totalCompra}*.\n\n*Datos bancarios:*\nAlias: *super.compra.ok*\nCBU/CVU: 0000000000000000000000\n\nPor favor, *envianos la foto del comprobante* por este mismo chat para validarlo automáticamente.`);
+                    await enviarMensaje(numeroCliente, `🏦 Elegiste abonar con ${nombreMetodo}.\n\nTotal a transferir: *$${totalCompra}*.\nAlias: *super.compra.ok*\n\nPor favor, *envianos la foto del comprobante* por este chat.`);
 
                 } else if (opcion === 'pago_tarjeta_pampa') {
-                    await pool.query(
-                        `INSERT INTO pagos (id_pedido, metodo, estado, monto) VALUES ($1, $2, $3, $4)`,
-                        [idPedidoAsociado, 'Tarjeta Bco Pampa', 'A Cobrar (Posnet)', totalCompra]
-                    );
-                    
+                    await pool.query(`INSERT INTO pagos (id_pedido, metodo, estado, monto) VALUES ($1, $2, $3, $4)`, [idPedidoAsociado, 'Tarjeta Bco Pampa', 'A Cobrar (Posnet)', totalCompra]);
                     await pool.query('UPDATE pedidos SET estado = $1 WHERE id_pedido = $2', ['En Preparación', idPedidoAsociado]);
                     pedidosEsperandoPago.delete(numeroCliente);
-                    await enviarMensaje(numeroCliente, `💳 ¡Perfecto! Registramos tu pago con *Tarjeta del Banco Pampa*.\n\nEl total es *$${totalCompra}*.\n\nEl repartidor llevará el posnet/lector para que puedas abonar con tu tarjeta al momento de recibir el pedido. ¡Ya lo estamos preparando!`);
+                    await enviarMensaje(numeroCliente, `💳 Pago con *Tarjeta del Banco Pampa* registrado ($${totalCompra}). ¡Llevamos el posnet al entregar!`);
                     await dispararEnvioFactura(idPedidoAsociado, numeroCliente);
 
                 } else if (opcion === 'pago_efectivo') {
-                    await pool.query(
-                        `INSERT INTO pagos (id_pedido, metodo, estado, monto) VALUES ($1, $2, $3, $4)`,
-                        [idPedidoAsociado, 'Efectivo', 'A Cobrar (Efectivo)', totalCompra]
-                    );
-                    
+                    await pool.query(`INSERT INTO pagos (id_pedido, metodo, estado, monto) VALUES ($1, $2, $3, $4)`, [idPedidoAsociado, 'Efectivo', 'A Cobrar (Efectivo)', totalCompra]);
                     await pool.query('UPDATE pedidos SET estado = $1 WHERE id_pedido = $2', ['En Preparación', idPedidoAsociado]);
                     pedidosEsperandoPago.delete(numeroCliente);
-                    await enviarMensaje(numeroCliente, `💵 ¡Excelente! Registramos tu pedido para pagar en efectivo al recibir.\n\nTené preparados *$${totalCompra}*.\n\nYa pasamos tu pedido al área de preparación para armarlo.`);
+                    await enviarMensaje(numeroCliente, `💵 Pedido registrado para pagar en efectivo al recibir ($${totalCompra}). ¡Ya lo estamos armando!`);
                     await dispararEnvioFactura(idPedidoAsociado, numeroCliente);
 
                 } else if (opcion === 'pago_mp') {
@@ -487,7 +467,7 @@ const recibirMensaje = async (req, res) => {
 
                         await pool.query(`INSERT INTO pagos (id_pedido, metodo, estado, transaccion_id, monto) VALUES ($1, $2, $3, $4, $5)`, [idPedidoAsociado, 'Mercado Pago', 'Pendiente', responsePreference.id, totalCompra]);
                         pedidosEsperandoPago.delete(numeroCliente);
-                        await enviarMensaje(numeroCliente, `💳 Generamos tu link de pago seguro por *$${totalCompra}*.\nHacé clic acá:\n${responsePreference.init_point}`);
+                        await enviarMensaje(numeroCliente, `💳 Link de pago generado por *$${totalCompra}*:\n${responsePreference.init_point}`);
                     } catch (errorMP) {
                         console.error("Error MP:", errorMP);
                     }
@@ -502,5 +482,4 @@ const recibirMensaje = async (req, res) => {
     }
 };
 
-_export = { verificarToken, recibirMensaje };
-module.exports = _export;
+module.exports = { verificarToken, recibirMensaje };
