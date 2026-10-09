@@ -19,6 +19,49 @@ const mensajesProcesados = new Set();
 const COSTO_FULL = 1500;
 const MINIMO_ENVIO_GRATIS = 40000;
 
+// Función auxiliar para enviar el menú de categorías de forma limpia y reutilizable
+async function enviarMenuCategorias(numeroCliente) {
+    try {
+        const resCategorias = await pool.query("SELECT DISTINCT categoria FROM productos WHERE stock_fisico > 0 AND categoria IS NOT NULL ORDER BY categoria ASC");
+        
+        if (resCategorias.rows.length > 0) {
+            const rowsCategorias = resCategorias.rows.map(row => ({
+                id: `ver_cat_${row.categoria.substring(0, 20)}`, 
+                title: row.categoria.substring(0, 24) 
+            }));
+
+            const dataMenuCategorias = {
+                messaging_product: "whatsapp",
+                to: numeroCliente,
+                type: "interactive",
+                interactive: {
+                    type: "list",
+                    header: { type: "text", text: "🛒 Supercompra" },
+                    body: { text: "¡Hola! 👋 Bienvenido a nuestro súper.\n\nDesplegá el menú de abajo para explorar nuestras góndolas. Podés sumar productos de distintas secciones y se guardarán juntos en tu carrito." },
+                    footer: { text: "Elegí una góndola" },
+                    action: {
+                        button: "Ver góndolas",
+                        sections: [
+                            {
+                                title: "Secciones disponibles",
+                                rows: rowsCategorias.slice(0, 10) 
+                            }
+                        ]
+                    }
+                }
+            };
+
+            await axios.post(`https://graph.facebook.com/v17.0/${process.env.WHATSAPP_PHONE_ID}/messages`, dataMenuCategorias, { 
+                headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` } 
+            });
+        } else {
+             await enviarMensaje(numeroCliente, "¡Hola! 👋 Bienvenido a Supercompra.\n\nEn este momento estamos reponiendo stock. ¡Volvé a consultarnos más tarde!");
+        }
+    } catch (errorMenu) {
+        console.error("Error armando menú de categorías:", errorMenu);
+    }
+}
+
 // Función auxiliar para generar y enviar la factura en PDF llamando a la API de Next.js
 async function dispararEnvioFactura(idPedido, numeroCliente) {
     try {
@@ -120,7 +163,7 @@ const recibirMensaje = async (req, res) => {
             }
         }
 
-        // --- 2. MANEJO DE MENSAJES DE TEXTO (MENÚ DE CATEGORÍAS) ---
+        // --- 2. MANEJO DE MENSAJES DE TEXTO ---
         if (message.type === 'text') {
             const textoRecibido = message.text.body;
 
@@ -159,46 +202,8 @@ const recibirMensaje = async (req, res) => {
                 return res.sendStatus(200); 
             }
 
-            // PASO 1: Enviar menú interactivo con las categorías disponibles
-            try {
-                const resCategorias = await pool.query("SELECT DISTINCT categoria FROM productos WHERE stock_fisico > 0 AND categoria IS NOT NULL ORDER BY categoria ASC");
-                
-                if (resCategorias.rows.length > 0) {
-                    const rowsCategorias = resCategorias.rows.map(row => ({
-                        id: `ver_cat_${row.categoria.substring(0, 20)}`, 
-                        title: row.categoria.substring(0, 24) 
-                    }));
-
-                    const dataMenuCategorias = {
-                        messaging_product: "whatsapp",
-                        to: numeroCliente,
-                        type: "interactive",
-                        interactive: {
-                            type: "list",
-                            header: { type: "text", text: "🛒 Supercompra" },
-                            body: { text: "¡Hola! 👋 Bienvenido.\n\nDesplegá el menú de abajo, elegí la góndola que buscás y explorá los productos." },
-                            footer: { text: "Atención automatizada" },
-                            action: {
-                                button: "Ver góndolas",
-                                sections: [
-                                    {
-                                        title: "Categorías",
-                                        rows: rowsCategorias.slice(0, 10) 
-                                    }
-                                ]
-                            }
-                        }
-                    };
-
-                    await axios.post(`https://graph.facebook.com/v17.0/${process.env.WHATSAPP_PHONE_ID}/messages`, dataMenuCategorias, { 
-                        headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` } 
-                    });
-                } else {
-                     await enviarMensaje(numeroCliente, "¡Hola! 👋 Bienvenido a Supercompra.\n\nEn este momento estamos reponiendo stock. ¡Volvé a consultarnos más tarde!");
-                }
-            } catch (errorMenu) {
-                console.error("Error armando menú de categorías:", errorMenu);
-            }
+            // Si escribe cualquier cosa (Hola, Menu, etc.), le mandamos el menú de categorías
+            await enviarMenuCategorias(numeroCliente);
         }
 
         // --- 3. MANEJO DE IMÁGENES (OCR) ---
@@ -306,11 +311,17 @@ const recibirMensaje = async (req, res) => {
             }
         }
 
-        // --- 5. CAPTURA DE BOTONES Y LISTAS (CATEGORÍAS, TURNOS Y PAGOS) ---
+        // --- 5. CAPTURA DE BOTONES Y LISTAS INTERACTIVAS ---
         if (message.type === 'interactive') {
             let opcion = message.interactive.type === 'button_reply' ? message.interactive.button_reply.id : message.interactive.list_reply.id;
 
-            // PASO 2: Cuando el cliente elige una categoría, le mandamos el PRODUCT LIST nativo con los productos de esa góndola
+            // A) SI TOCA EL BOTÓN PARA VOLVER A VER LAS CATEGORÍAS
+            if (opcion === 'ver_menu_categorias') {
+                await enviarMenuCategorias(numeroCliente);
+                return res.sendStatus(200);
+            }
+
+            // B) CUANDO ELIGE UNA CATEGORÍA: Mandamos el product_list + un botón táctil para volver al menú
             if (opcion.startsWith('ver_cat_')) {
                 const categoriaElegida = opcion.replace('ver_cat_', '');
                 
@@ -321,6 +332,7 @@ const recibirMensaje = async (req, res) => {
                         const nombreCategoriaReal = resProductos.rows[0].categoria;
                         const productItems = resProductos.rows.map(p => ({ product_retailer_id: p.id_producto }));
                         
+                        // 1. Mandamos la lista de productos de la categoría
                         const dataListaProductos = {
                             messaging_product: "whatsapp",
                             recipient_type: "individual",
@@ -328,8 +340,8 @@ const recibirMensaje = async (req, res) => {
                             type: "interactive",
                             interactive: {
                                 type: "product_list",
-                                header: { type: "text", text: `🛒 ${nombreCategoriaReal.substring(0, 60)}` },
-                                body: { text: `Acá tenés nuestra mercadería de la sección *${nombreCategoriaReal}*.\n\nTocá los productos para agregarlos al carrito.\n\n💡 _Para ver otra sección, escribime "Hola" o "Menu"._` },
+                                header: { type: "text", text: `🛒 Sección: ${nombreCategoriaReal.substring(0, 50)}` },
+                                body: { text: `Explorá los productos de esta góndola y sumalos a tu carrito.` },
                                 action: {
                                     catalog_id: "2194379468072114",
                                     sections: [
@@ -344,6 +356,26 @@ const recibirMensaje = async (req, res) => {
                         await axios.post(`https://graph.facebook.com/v17.0/${process.env.WHATSAPP_PHONE_ID}/messages`, dataListaProductos, { 
                             headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` } 
                         });
+
+                        // 2. Inmediatamente mandamos un botón táctil para volver al menú de categorías sin tipear nada
+                        const dataBotonVolver = {
+                            messaging_product: "whatsapp",
+                            to: numeroCliente,
+                            type: "interactive",
+                            interactive: {
+                                type: "button",
+                                body: { text: "¿Querés seguir recorriendo otras góndolas?" },
+                                action: {
+                                    buttons: [
+                                        { type: "reply", reply: { id: "ver_menu_categorias", title: "📂 Ver Categorías" } }
+                                    ]
+                                }
+                            }
+                        };
+                        await axios.post(`https://graph.facebook.com/v17.0/${process.env.WHATSAPP_PHONE_ID}/messages`, dataBotonVolver, { 
+                            headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` } 
+                        });
+
                     } else {
                         await enviarMensaje(numeroCliente, "No hay stock disponible en esta sección por el momento.");
                     }
