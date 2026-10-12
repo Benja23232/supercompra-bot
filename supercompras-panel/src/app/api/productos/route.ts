@@ -61,15 +61,16 @@ export async function POST(request: Request) {
   }
 }
 
-// Método PUT para editar nombre, precio o cambiar visibilidad (Ocultar/Mostrar)
+// Método PUT para editar nombre, precio, foto o cambiar visibilidad (Ocultar/Mostrar)
 export async function PUT(request: Request) {
   try {
-    const { id_producto, nombre, precio, activo } = await request.json();
+    const { id_producto, nombre, precio, activo, image_url } = await request.json(); // Añadido image_url
 
     if (!id_producto) {
       return NextResponse.json({ success: false, error: 'Falta ID' }, { status: 400 });
     }
 
+    // 1. Actualizamos Supabase con los campos que sí tiene la tabla (nombre, precio, activo)
     const updateData: any = {};
     if (nombre !== undefined) updateData.nombre = nombre.trim();
     if (precio !== undefined) updateData.precio = Number(precio);
@@ -84,7 +85,7 @@ export async function PUT(request: Request) {
 
     if (error) throw new Error(error.message);
 
-    // Sincronizar estado con WhatsApp
+    // 2. Sincronizar estado y foto con WhatsApp
     const catalogId = process.env.META_CATALOG_ID;
     const accessToken = process.env.META_ACCESS_TOKEN;
 
@@ -98,8 +99,13 @@ export async function PUT(request: Request) {
         availability: activo === false ? 'out of stock' : (prodActualizado.stock_fisico > 0 || prodActualizado.tipo === 'combo' ? 'in stock' : 'out of stock')
       };
 
+      // Si desde el frontend nos mandan una imagen nueva, la agregamos al payload de Meta
+      if (image_url && image_url.trim() !== '') {
+        bodyMeta.image_url = image_url.trim();
+      }
+
       await fetch(`https://graph.facebook.com/v19.0/${catalogId}/products`, {
-        method: 'POST',
+        method: 'POST', // Meta usa POST para actualizar si el retailer_id ya existe
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` },
         body: JSON.stringify(bodyMeta)
       });

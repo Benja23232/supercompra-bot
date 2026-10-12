@@ -12,10 +12,14 @@ export default function Productos() {
   const [loading, setLoading] = useState(true);
   const [subiendo, setSubiendo] = useState(false);
   
-  // Estados de edición general (Nombre y Precio)
+  // NUEVO: Estado para el filtro de categorías
+  const [categoriaActiva, setCategoriaActiva] = useState('Todas');
+
+  // Estados de edición general (Nombre, Precio y Foto)
   const [editandoId, setEditandoId] = useState<string | null>(null);
   const [editNombre, setEditNombre] = useState('');
   const [editPrecio, setEditPrecio] = useState<number>(0);
+  const [editArchivo, setEditArchivo] = useState<File | null>(null);
 
   const [loteProductoId, setLoteProductoId] = useState<string | null>(null);
   const [loteCant, setLoteCant] = useState<number | ''>('');
@@ -28,7 +32,7 @@ export default function Productos() {
   const [formStock, setFormStock] = useState<number | ''>('');
   const [formArchivo, setFormArchivo] = useState<File | null>(null);
   const [formVencimiento, setFormVencimiento] = useState(''); 
-  const [formCategoria, setFormCategoria] = useState('Almacén'); // Categoría original por defecto
+  const [formCategoria, setFormCategoria] = useState('Almacén');
 
   // Formulario Combos/Promos
   const [mostrarFormCombo, setMostrarFormCombo] = useState(false);
@@ -48,7 +52,6 @@ export default function Productos() {
       const procesados = data.map(p => {
         const lotesActivos = (p.lotes || []).filter((l: any) => l.cantidad > 0);
         
-        // Orden seguro manejando lotes sin fecha de vencimiento
         lotesActivos.sort((a: any, b: any) => {
           if (!a.fecha_vencimiento) return 1;
           if (!b.fecha_vencimiento) return -1;
@@ -81,23 +84,48 @@ export default function Productos() {
     } else {
       router.push('/'); 
     }
-  }, [router]); // Agregado router a las dependencias por buena práctica de React
+  }, [router]);
 
   const activarEdicion = (prod: any) => {
     setEditandoId(prod.id_producto);
     setEditNombre(prod.nombre);
     setEditPrecio(prod.precio);
+    setEditArchivo(null);
   };
 
   const guardarEdicion = async (id: string) => {
+    setSubiendo(true);
+    let imageUrl = undefined;
+
+    if (editArchivo) {
+      const nombreArchivo = `${Date.now()}_${editArchivo.name.replace(/[^a-zA-Z0-9]/g, '_')}`;
+      const { error: uploadError } = await supabase.storage.from('productos').upload(nombreArchivo, editArchivo);
+      
+      if (!uploadError) {
+        imageUrl = supabase.storage.from('productos').getPublicUrl(nombreArchivo).data.publicUrl;
+      } else {
+        console.error('Error al subir la imagen en edición:', uploadError);
+        alert('Error al subir la imagen. Guardando los demás datos.');
+      }
+    }
+
+    const payload: any = { id_producto: id, nombre: editNombre, precio: editPrecio };
+    if (imageUrl) {
+      payload.image_url = imageUrl;
+    }
+
     const res = await fetch('/api/productos', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id_producto: id, nombre: editNombre, precio: editPrecio })
+      body: JSON.stringify(payload)
     });
+
     const data = await res.json();
     if (!res.ok || !data.success) alert("Error al actualizar");
+    
     setEditandoId(null);
+    setEditArchivo(null);
+    setSubiendo(false);
     fetchProductos();
   };
 
@@ -202,6 +230,13 @@ export default function Productos() {
 
   const productosUnitarios = productos.filter(p => p.tipo !== 'combo');
 
+  // NUEVO: Lógica para obtener categorías únicas y filtrar la tabla
+  const categoriasUnicas = ['Todas', ...Array.from(new Set(productos.map(p => p.categoria || 'Sin asignar')))];
+  
+  const productosFiltrados = categoriaActiva === 'Todas' 
+    ? productos 
+    : productos.filter(p => (p.categoria || 'Sin asignar') === categoriaActiva);
+
   return (
     <main className="contenedor-pagina">
       <Link href="/dashboard" className="link-volver">🔙 Volver al panel principal</Link>
@@ -233,29 +268,21 @@ export default function Productos() {
           <div className="campo-form grow">
             <label className="label-form">Categoría</label>
             <select value={formCategoria} onChange={(e) => setFormCategoria(e.target.value)} className="input-form" required>
-              {/* Tus categorías originales */}
-              <option value="Almacén">Almacén</option>
-              <option value="Artículos de Limpieza">Artículos de Limpieza</option>
-              <option value="Bebidas sin alcohol">Bebidas sin alcohol</option>
-              <option value="Galletitas y bizcochos">Galletitas y bizcochos</option>
-              <option value="Conservas y frutas en almíbar">Conservas y frutas en almíbar</option>
-              <option value="Higiene dental">Higiene dental</option>
-              <option value="Jugos Tang">Jugos Tang</option>
-              <option value="Otros">Otros</option>
-              
-              {/* Categorías nuevas que no estaban en tu panel */}
+              <option value="Almacén y Varios">Almacén y Varios</option>
+              <option value="Salsas y Conservas">Salsas y Conservas</option>
               <option value="Aceites y Vinagres">Aceites y Vinagres</option>
-              <option value="Bebidas con Alcohol">Bebidas con Alcohol</option>
-              <option value="Condimentos en Sobre">Condimentos en Sobre</option>
-              <option value="Cuidado Personal">Cuidado Personal</option>
-              <option value="Fideos, Arroz y Harinas">Fideos, Arroz y Harinas</option>
               <option value="Golosinas y Postres">Golosinas y Postres</option>
               <option value="Infusiones">Infusiones</option>
-              <option value="Insecticidas">Insecticidas</option>
+              <option value="Fideos, Arroz y Harinas">Fideos, Arroz y Harinas</option>
               <option value="Lácteos y Snacks">Lácteos y Snacks</option>
+              <option value="Bebidas Sin Alcohol">Bebidas Sin Alcohol</option>
+              <option value="Bebidas con Alcohol">Bebidas con Alcohol</option>
+              <option value="Condimentos en Sobre">Condimentos en Sobre</option>
+              <option value="Insecticidas">Insecticidas</option>
+              <option value="Limpieza">Limpieza</option>
+              <option value="Cuidado Personal">Cuidado Personal</option>
               <option value="Mascotas">Mascotas</option>
               <option value="Repostería y Dulces">Repostería y Dulces</option>
-              <option value="Salsas y Conservas">Salsas y Conservas</option>
             </select>
           </div>
 
@@ -296,6 +323,39 @@ export default function Productos() {
         </form>
       )}
       
+      
+     {/* NUEVO: Barra de pestañas para las categorías */}
+      {!loading && productos.length > 0 && (
+        <div style={{ 
+          display: 'flex', 
+          gap: '8px', 
+          flexWrap: 'wrap', /* ACA ESTÁ LA MAGIA: hace que bajen a la siguiente línea automáticamente */
+          paddingBottom: '10px', 
+          marginBottom: '15px' 
+        }}>
+          {categoriasUnicas.map(cat => (
+            <button 
+              key={cat}
+              onClick={() => setCategoriaActiva(cat)}
+              style={{
+                padding: '6px 14px',
+                borderRadius: '20px',
+                border: categoriaActiva === cat ? 'none' : '1px solid #d1d5db',
+                backgroundColor: categoriaActiva === cat ? '#2563eb' : '#fff',
+                color: categoriaActiva === cat ? '#fff' : '#374151',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+                fontWeight: categoriaActiva === cat ? '600' : '500',
+                transition: 'all 0.2s',
+                boxShadow: categoriaActiva === cat ? '0 2px 4px rgba(37, 99, 235, 0.2)' : 'none'
+              }}
+            >
+              {cat}
+            </button>
+          ))}
+        </div>
+      )}
+
       {loading ? <p className="texto-cargando">Cargando...</p> : (
         <div className="contenedor-tabla">
           <table className="tabla-datos">
@@ -309,7 +369,8 @@ export default function Productos() {
               </tr>
             </thead>
             <tbody>
-              {productos.map((prod) => {
+              {/* NUEVO: Mapeamos productosFiltrados en lugar de productos */}
+              {productosFiltrados.map((prod) => {
                 const esEditando = editandoId === prod.id_producto;
                 const esAgregandoLote = loteProductoId === prod.id_producto;
                 const esCombo = prod.tipo === 'combo';
@@ -317,10 +378,17 @@ export default function Productos() {
                 
                 return (
                   <tr key={prod.id_producto} style={{ opacity: estaOculto ? 0.4 : 1, backgroundColor: esCombo ? '#131111' : 'transparent' }}>
+                    
                     <td className="font-fuerte">
                       {esCombo && "✨ "}
                       {esEditando ? (
-                        <input type="text" value={editNombre} onChange={(e) => setEditNombre(e.target.value)} className="input-tabla" style={{width: '100%'}}/>
+                        <div style={{display: 'flex', flexDirection: 'column', gap: '8px'}}>
+                          <input type="text" value={editNombre} onChange={(e) => setEditNombre(e.target.value)} className="input-tabla" style={{width: '100%'}}/>
+                          <div style={{fontSize: '0.8rem', color: '#666'}}>
+                            <label>Foto (Opcional): </label>
+                            <input type="file" accept="image/*" onChange={(e) => setEditArchivo(e.target.files ? e.target.files[0] : null)} style={{maxWidth: '100%'}}/>
+                          </div>
+                        </div>
                       ) : (
                         <span>{prod.nombre} {estaOculto && " 🙈 (Oculto)"}</span>
                       )}
@@ -373,14 +441,21 @@ export default function Productos() {
                       )}
                       {esEditando && (
                         <div className="grupo-botones-centro">
-                          <button onClick={() => guardarEdicion(prod.id_producto)} className="btn-chico btn-exito">Guardar</button>
-                          <button onClick={() => setEditandoId(null)} className="btn-chico btn-peligro">Cancelar</button>
+                          <button onClick={() => guardarEdicion(prod.id_producto)} className="btn-chico btn-exito" disabled={subiendo}>{subiendo ? '...' : 'Guardar'}</button>
+                          <button onClick={() => setEditandoId(null)} className="btn-chico btn-peligro" disabled={subiendo}>Cancelar</button>
                         </div>
                       )}
                     </td>
                   </tr>
                 );
               })}
+              {productosFiltrados.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="texto-centro" style={{padding: '20px', color: '#6b7280'}}>
+                    No hay productos en esta categoría.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
