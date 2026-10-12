@@ -129,7 +129,8 @@ export default function Productos() {
     if (!res.ok || !data.success) {
       alert("Error al actualizar");
     } else if (fotoSubida) {
-      setFotosRecientes(prev => [...prev, id]);
+      // Guardamos como string para evitar fallos de renderizado
+      setFotosRecientes(prev => [...prev, String(id)]);
     }
     
     setEditandoId(null);
@@ -397,26 +398,24 @@ export default function Productos() {
                           </div>
                         </div>
                       ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span>{prod.nombre} {estaOculto && " 🙈 (Oculto)"}</span>
-                            
-                            {/* Etiqueta usando el truco del precio */}
-                            {prod.precio > 0 ? (
-                              <span style={{ fontSize: '0.70rem', padding: '3px 6px', backgroundColor: '#dcfce7', color: '#166534', borderRadius: '12px', border: '1px solid #bbf7d0', whiteSpace: 'nowrap' }}>
-                                ✓ Precio OK
-                              </span>
-                            ) : (
-                              <span style={{ fontSize: '0.70rem', padding: '3px 6px', backgroundColor: '#fee2e2', color: '#991b1b', borderRadius: '12px', border: '1px solid #fecaca', whiteSpace: 'nowrap' }}>
-                                📸 Falta armar
-                              </span>
-                            )}
-                          </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                          <span>{prod.nombre} {estaOculto && " 🙈 (Oculto)"}</span>
                           
-                          {/* El cartel de recién cargada usando la memoria */}
-                          {fotosRecientes.includes(prod.id_producto) && (
-                            <span style={{ fontSize: '0.75rem', color: '#059669', fontWeight: 'bold' }}>
-                              🎉 Imagen recientemente cargada
+                          {/* Etiqueta usando el truco del precio */}
+                          {prod.precio > 0 ? (
+                            <span style={{ fontSize: '0.70rem', padding: '3px 6px', backgroundColor: '#dcfce7', color: '#166534', borderRadius: '12px', border: '1px solid #bbf7d0', whiteSpace: 'nowrap' }}>
+                              ✓ Precio OK
+                            </span>
+                          ) : (
+                            <span style={{ fontSize: '0.70rem', padding: '3px 6px', backgroundColor: '#fee2e2', color: '#991b1b', borderRadius: '12px', border: '1px solid #fecaca', whiteSpace: 'nowrap' }}>
+                              📸 Falta armar
+                            </span>
+                          )}
+                          
+                          {/* El cartel amarillo al lado del nombre */}
+                          {fotosRecientes.includes(String(prod.id_producto)) && (
+                            <span style={{ fontSize: '0.70rem', padding: '3px 6px', backgroundColor: '#fef3c7', color: '#92400e', borderRadius: '12px', border: '1px solid #fde68a', whiteSpace: 'nowrap', fontWeight: 'bold' }}>
+                              🎉 Foto subida
                             </span>
                           )}
                         </div>
