@@ -12,8 +12,11 @@ export default function Productos() {
   const [loading, setLoading] = useState(true);
   const [subiendo, setSubiendo] = useState(false);
   
-  // NUEVO: Estado para el filtro de categorías
+  // Estado para el filtro de categorías
   const [categoriaActiva, setCategoriaActiva] = useState('Todas');
+
+  // Estado para simular/recordar a cuáles les subimos foto en esta sesión
+  const [fotosRecientes, setFotosRecientes] = useState<string[]>([]);
 
   // Estados de edición general (Nombre, Precio y Foto)
   const [editandoId, setEditandoId] = useState<string | null>(null);
@@ -32,7 +35,7 @@ export default function Productos() {
   const [formStock, setFormStock] = useState<number | ''>('');
   const [formArchivo, setFormArchivo] = useState<File | null>(null);
   const [formVencimiento, setFormVencimiento] = useState(''); 
-  const [formCategoria, setFormCategoria] = useState('Almacén');
+  const [formCategoria, setFormCategoria] = useState('Almacén y Varios');
 
   // Formulario Combos/Promos
   const [mostrarFormCombo, setMostrarFormCombo] = useState(false);
@@ -96,6 +99,7 @@ export default function Productos() {
   const guardarEdicion = async (id: string) => {
     setSubiendo(true);
     let imageUrl = undefined;
+    let fotoSubida = false;
 
     if (editArchivo) {
       const nombreArchivo = `${Date.now()}_${editArchivo.name.replace(/[^a-zA-Z0-9]/g, '_')}`;
@@ -103,6 +107,7 @@ export default function Productos() {
       
       if (!uploadError) {
         imageUrl = supabase.storage.from('productos').getPublicUrl(nombreArchivo).data.publicUrl;
+        fotoSubida = true;
       } else {
         console.error('Error al subir la imagen en edición:', uploadError);
         alert('Error al subir la imagen. Guardando los demás datos.');
@@ -121,7 +126,11 @@ export default function Productos() {
     });
 
     const data = await res.json();
-    if (!res.ok || !data.success) alert("Error al actualizar");
+    if (!res.ok || !data.success) {
+      alert("Error al actualizar");
+    } else if (fotoSubida) {
+      setFotosRecientes(prev => [...prev, id]);
+    }
     
     setEditandoId(null);
     setEditArchivo(null);
@@ -187,7 +196,7 @@ export default function Productos() {
         categoria: formCategoria
       })
     });
-    setFormNombre(''); setFormPrecio(''); setFormStock(''); setFormVencimiento(''); setFormArchivo(null); setFormCategoria('Almacén');
+    setFormNombre(''); setFormPrecio(''); setFormStock(''); setFormVencimiento(''); setFormArchivo(null); setFormCategoria('Almacén y Varios');
     setMostrarFormulario(false); fetchProductos(); setSubiendo(false);
   };
 
@@ -230,7 +239,7 @@ export default function Productos() {
 
   const productosUnitarios = productos.filter(p => p.tipo !== 'combo');
 
-  // NUEVO: Lógica para obtener categorías únicas y filtrar la tabla
+  // Lógica para obtener categorías únicas y filtrar la tabla
   const categoriasUnicas = ['Todas', ...Array.from(new Set(productos.map(p => p.categoria || 'Sin asignar')))];
   
   const productosFiltrados = categoriaActiva === 'Todas' 
@@ -323,13 +332,12 @@ export default function Productos() {
         </form>
       )}
       
-      
-     {/* NUEVO: Barra de pestañas para las categorías */}
+      {/* Barra de pestañas para las categorías que bajan solas */}
       {!loading && productos.length > 0 && (
         <div style={{ 
           display: 'flex', 
           gap: '8px', 
-          flexWrap: 'wrap', /* ACA ESTÁ LA MAGIA: hace que bajen a la siguiente línea automáticamente */
+          flexWrap: 'wrap',
           paddingBottom: '10px', 
           marginBottom: '15px' 
         }}>
@@ -369,7 +377,6 @@ export default function Productos() {
               </tr>
             </thead>
             <tbody>
-              {/* NUEVO: Mapeamos productosFiltrados en lugar de productos */}
               {productosFiltrados.map((prod) => {
                 const esEditando = editandoId === prod.id_producto;
                 const esAgregandoLote = loteProductoId === prod.id_producto;
@@ -390,7 +397,29 @@ export default function Productos() {
                           </div>
                         </div>
                       ) : (
-                        <span>{prod.nombre} {estaOculto && " 🙈 (Oculto)"}</span>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span>{prod.nombre} {estaOculto && " 🙈 (Oculto)"}</span>
+                            
+                            {/* Etiqueta usando el truco del precio */}
+                            {prod.precio > 0 ? (
+                              <span style={{ fontSize: '0.70rem', padding: '3px 6px', backgroundColor: '#dcfce7', color: '#166534', borderRadius: '12px', border: '1px solid #bbf7d0', whiteSpace: 'nowrap' }}>
+                                ✓ Precio OK
+                              </span>
+                            ) : (
+                              <span style={{ fontSize: '0.70rem', padding: '3px 6px', backgroundColor: '#fee2e2', color: '#991b1b', borderRadius: '12px', border: '1px solid #fecaca', whiteSpace: 'nowrap' }}>
+                                📸 Falta armar
+                              </span>
+                            )}
+                          </div>
+                          
+                          {/* El cartel de recién cargada usando la memoria */}
+                          {fotosRecientes.includes(prod.id_producto) && (
+                            <span style={{ fontSize: '0.75rem', color: '#059669', fontWeight: 'bold' }}>
+                              🎉 Imagen recientemente cargada
+                            </span>
+                          )}
+                        </div>
                       )}
                     </td>
                     
