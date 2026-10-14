@@ -240,9 +240,16 @@ export default function Productos() {
 
   const productosUnitarios = productos.filter(p => p.tipo !== 'combo');
 
-  // Lógica para obtener categorías únicas y filtrar la tabla
+  // Lógica para obtener categorías únicas y contar los productos de cada una
   const categoriasUnicas = ['Todas', ...Array.from(new Set(productos.map(p => p.categoria || 'Sin asignar')))];
   
+  // Función para obtener el texto del botón con la cantidad (ej: "Limpieza (15)")
+  const getCategoriaTexto = (cat: string) => {
+    if (cat === 'Todas') return `Todas (${productos.length})`;
+    const cantidad = productos.filter(p => (p.categoria || 'Sin asignar') === cat).length;
+    return `${cat} (${cantidad})`;
+  };
+
   const productosFiltrados = categoriaActiva === 'Todas' 
     ? productos 
     : productos.filter(p => (p.categoria || 'Sin asignar') === categoriaActiva);
@@ -359,7 +366,8 @@ export default function Productos() {
                 boxShadow: categoriaActiva === cat ? '0 2px 4px rgba(37, 99, 235, 0.2)' : 'none'
               }}
             >
-              {cat}
+              {/* ACÁ ESTÁ EL CAMBIO: Imprimimos la función que cuenta */}
+              {getCategoriaTexto(cat)}
             </button>
           ))}
         </div>
