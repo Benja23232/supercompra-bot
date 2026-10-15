@@ -12,8 +12,9 @@ export default function Productos() {
   const [loading, setLoading] = useState(true);
   const [subiendo, setSubiendo] = useState(false);
   
-  // Estado para el filtro de categorías
+  // Estado para el filtro de categorías y búsqueda por nombre
   const [categoriaActiva, setCategoriaActiva] = useState('Todas');
+  const [busqueda, setBusqueda] = useState('');
 
   // Estado para simular/recordar a cuáles les subimos foto en esta sesión
   const [fotosRecientes, setFotosRecientes] = useState<string[]>([]);
@@ -129,7 +130,6 @@ export default function Productos() {
     if (!res.ok || !data.success) {
       alert("Error al actualizar");
     } else if (fotoSubida) {
-      // Guardamos como string para evitar fallos de renderizado
       setFotosRecientes(prev => [...prev, String(id)]);
     }
     
@@ -240,19 +240,21 @@ export default function Productos() {
 
   const productosUnitarios = productos.filter(p => p.tipo !== 'combo');
 
-  // Lógica para obtener categorías únicas y contar los productos de cada una
+  // Lógica para categorías y conteos
   const categoriasUnicas = ['Todas', ...Array.from(new Set(productos.map(p => p.categoria || 'Sin asignar')))];
   
-  // Función para obtener el texto del botón con la cantidad (ej: "Limpieza (15)")
   const getCategoriaTexto = (cat: string) => {
     if (cat === 'Todas') return `Todas (${productos.length})`;
     const cantidad = productos.filter(p => (p.categoria || 'Sin asignar') === cat).length;
     return `${cat} (${cantidad})`;
   };
 
-  const productosFiltrados = categoriaActiva === 'Todas' 
-    ? productos 
-    : productos.filter(p => (p.categoria || 'Sin asignar') === categoriaActiva);
+  // Filtrado combinado: Categoría Activa + Buscador por Nombre
+  const productosFiltrados = productos.filter(p => {
+    const coincideCategoria = categoriaActiva === 'Todas' || (p.categoria || 'Sin asignar') === categoriaActiva;
+    const coincideNombre = (p.nombre || '').toLowerCase().includes(busqueda.toLowerCase().trim());
+    return coincideCategoria && coincideNombre;
+  });
 
   return (
     <main className="contenedor-pagina">
@@ -339,8 +341,45 @@ export default function Productos() {
           <button type="submit" className="btn btn-exito btn-form" style={{ width: '100%' }} disabled={subiendo}>{subiendo ? 'Guardando...' : 'Crear Promo y Publicar en WhatsApp'}</button>
         </form>
       )}
+
+      {/* Buscador de Productos por Nombre */}
+      {!loading && productos.length > 0 && (
+        <div style={{ marginBottom: '15px' }}>
+          <div style={{ position: 'relative', width: '100%', maxWidth: '400px' }}>
+            <input
+              type="text"
+              placeholder="🔍 Buscar por nombre..."
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+              className="input-form"
+              style={{
+                width: '100%',
+                paddingRight: busqueda ? '35px' : '12px'
+              }}
+            />
+            {busqueda && (
+              <button
+                onClick={() => setBusqueda('')}
+                style={{
+                  position: 'absolute',
+                  right: '10px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: '#9ca3af',
+                  fontSize: '1rem'
+                }}
+              >
+                ✖
+              </button>
+            )}
+          </div>
+        </div>
+      )}
       
-      {/* Barra de pestañas para las categorías que bajan solas */}
+      {/* Barra de pestañas para las categorías */}
       {!loading && productos.length > 0 && (
         <div style={{ 
           display: 'flex', 
@@ -366,7 +405,6 @@ export default function Productos() {
                 boxShadow: categoriaActiva === cat ? '0 2px 4px rgba(37, 99, 235, 0.2)' : 'none'
               }}
             >
-              {/* ACÁ ESTÁ EL CAMBIO: Imprimimos la función que cuenta */}
               {getCategoriaTexto(cat)}
             </button>
           ))}
@@ -409,7 +447,6 @@ export default function Productos() {
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                           <span>{prod.nombre} {estaOculto && " 🙈 (Oculto)"}</span>
                           
-                          {/* Etiqueta usando el truco del precio */}
                           {prod.precio > 0 ? (
                             <span style={{ fontSize: '0.70rem', padding: '3px 6px', backgroundColor: '#dcfce7', color: '#166534', borderRadius: '12px', border: '1px solid #bbf7d0', whiteSpace: 'nowrap' }}>
                               ✓ Precio OK
@@ -420,7 +457,6 @@ export default function Productos() {
                             </span>
                           )}
                           
-                          {/* El cartel amarillo al lado del nombre */}
                           {fotosRecientes.includes(String(prod.id_producto)) && (
                             <span style={{ fontSize: '0.70rem', padding: '3px 6px', backgroundColor: '#fef3c7', color: '#92400e', borderRadius: '12px', border: '1px solid #fde68a', whiteSpace: 'nowrap', fontWeight: 'bold' }}>
                               🎉 Foto subida
@@ -488,7 +524,7 @@ export default function Productos() {
               {productosFiltrados.length === 0 && (
                 <tr>
                   <td colSpan={5} className="texto-centro" style={{padding: '20px', color: '#6b7280'}}>
-                    No hay productos en esta categoría.
+                    {busqueda ? `No se encontraron productos que coincidan con "${busqueda}".` : 'No hay productos en esta categoría.'}
                   </td>
                 </tr>
               )}
