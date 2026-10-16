@@ -5,6 +5,52 @@ import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link'; 
 
+// Categorías (extraídas de tu base de datos)
+const CATEGORIAS = [
+  'Aceites y Vinagres',
+  'Almacén',
+  'Almacén y Varios',
+  'Bebidas con Alcohol',
+  'Bebidas Sin Alcohol',
+  'Café, Té y Chocolates',
+  'Combos y Ofertas',
+  'Condimentos en Sobre',
+  'Conservas y frutas en almíbar',
+  'Cuidado Personal',
+  'Fideos, Arroz y Harinas',
+  'Galletitas Dulces',
+  'Galletitas Saladas y Bizcochos',
+  'Gaseosas y Aguas',
+  'Golosinas y Postres',
+  'Higiene dental',
+  'Infusiones',
+  'Insecticidas',
+  'Jugos Tang',
+  'Jugos y Saborizadas',
+  'Lácteos y Snacks',
+  'Limpieza',
+  'Limpieza - Cocina y Vajilla',
+  'Limpieza - Desinfectantes y Pisos',
+  'Limpieza - Ropa',
+  'Limpieza - Utensilios y Accesorios',
+  'Limpieza - Varios',
+  'Papelería',
+  'Repostería y Dulces',
+  'Salsas y Conservas',
+  'Yerba Mate',
+];
+
+// Rubros (extraídos de tu base de datos)
+const RUBROS = [
+  'Almacén y Conservas',
+  'Bebidas e Infusiones',
+  'Combos y Ofertas',
+  'Cuidado Personal e Higiene',
+  'Galletitas y Snacks',
+  'Limpieza del Hogar',
+  'Papelería e Insecticidas',
+];
+
 export default function Productos() {
   const router = useRouter();
   const [autorizado, setAutorizado] = useState(false);
@@ -19,11 +65,13 @@ export default function Productos() {
   // Estado para simular/recordar a cuáles les subimos foto en esta sesión
   const [fotosRecientes, setFotosRecientes] = useState<string[]>([]);
 
-  // Estados de edición general (Nombre, Precio y Foto)
+  // Estados de edición general (Nombre, Precio, Foto, Categoría y Rubro)
   const [editandoId, setEditandoId] = useState<string | null>(null);
   const [editNombre, setEditNombre] = useState('');
   const [editPrecio, setEditPrecio] = useState<number>(0);
   const [editArchivo, setEditArchivo] = useState<File | null>(null);
+  const [editCategoria, setEditCategoria] = useState('');
+  const [editRubro, setEditRubro] = useState('');
 
   const [loteProductoId, setLoteProductoId] = useState<string | null>(null);
   const [loteCant, setLoteCant] = useState<number | ''>('');
@@ -37,6 +85,7 @@ export default function Productos() {
   const [formArchivo, setFormArchivo] = useState<File | null>(null);
   const [formVencimiento, setFormVencimiento] = useState(''); 
   const [formCategoria, setFormCategoria] = useState('Almacén y Varios');
+  const [formRubro, setFormRubro] = useState('');
 
   // Formulario Combos/Promos
   const [mostrarFormCombo, setMostrarFormCombo] = useState(false);
@@ -95,6 +144,8 @@ export default function Productos() {
     setEditNombre(prod.nombre);
     setEditPrecio(prod.precio);
     setEditArchivo(null);
+    setEditCategoria(prod.categoria || '');
+    setEditRubro(prod.rubro || '');
   };
 
   const guardarEdicion = async (id: string) => {
@@ -115,7 +166,13 @@ export default function Productos() {
       }
     }
 
-    const payload: any = { id_producto: id, nombre: editNombre, precio: editPrecio };
+    const payload: any = { 
+      id_producto: id, 
+      nombre: editNombre, 
+      precio: editPrecio,
+      categoria: editCategoria,
+      rubro: editRubro
+    };
     if (imageUrl) {
       payload.image_url = imageUrl;
     }
@@ -194,10 +251,11 @@ export default function Productos() {
         stock_fisico: Number(formStock), 
         image_url: imageUrl, 
         fecha_vencimiento: formVencimiento ? formVencimiento : null,
-        categoria: formCategoria
+        categoria: formCategoria,
+        rubro: formRubro
       })
     });
-    setFormNombre(''); setFormPrecio(''); setFormStock(''); setFormVencimiento(''); setFormArchivo(null); setFormCategoria('Almacén y Varios');
+    setFormNombre(''); setFormPrecio(''); setFormStock(''); setFormVencimiento(''); setFormArchivo(null); setFormCategoria('Almacén y Varios'); setFormRubro('');
     setMostrarFormulario(false); fetchProductos(); setSubiendo(false);
   };
 
@@ -287,21 +345,19 @@ export default function Productos() {
           <div className="campo-form grow">
             <label className="label-form">Categoría</label>
             <select value={formCategoria} onChange={(e) => setFormCategoria(e.target.value)} className="input-form" required>
-              <option value="Almacén y Varios">Almacén y Varios</option>
-              <option value="Salsas y Conservas">Salsas y Conservas</option>
-              <option value="Aceites y Vinagres">Aceites y Vinagres</option>
-              <option value="Golosinas y Postres">Golosinas y Postres</option>
-              <option value="Infusiones">Infusiones</option>
-              <option value="Fideos, Arroz y Harinas">Fideos, Arroz y Harinas</option>
-              <option value="Lácteos y Snacks">Lácteos y Snacks</option>
-              <option value="Bebidas Sin Alcohol">Bebidas Sin Alcohol</option>
-              <option value="Bebidas con Alcohol">Bebidas con Alcohol</option>
-              <option value="Condimentos en Sobre">Condimentos en Sobre</option>
-              <option value="Insecticidas">Insecticidas</option>
-              <option value="Limpieza">Limpieza</option>
-              <option value="Cuidado Personal">Cuidado Personal</option>
-              <option value="Mascotas">Mascotas</option>
-              <option value="Repostería y Dulces">Repostería y Dulces</option>
+              {CATEGORIAS.map(c => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="campo-form grow">
+            <label className="label-form">Rubro</label>
+            <select value={formRubro} onChange={(e) => setFormRubro(e.target.value)} className="input-form">
+              <option value="">-- Sin asignar --</option>
+              {RUBROS.map(r => (
+                <option key={r} value={r}>{r}</option>
+              ))}
             </select>
           </div>
 
@@ -413,14 +469,16 @@ export default function Productos() {
 
       {loading ? <p className="texto-cargando">Cargando...</p> : (
         <div className="contenedor-tabla">
-          <table className="tabla-datos">
+          <table className="tabla-datos" style={{ fontSize: '0.95rem' }}>
             <thead>
               <tr>
-                <th className="texto-izq">Producto / Promo</th>
-                <th className="texto-centro">Precio</th>
-                <th className="texto-izq">Depósito / Receta</th>
-                <th className="texto-centro">Stock Físico</th>
-                <th className="texto-centro">Acciones</th>
+                <th className="texto-izq" style={{ padding: '10px 12px' }}>Producto / Promo</th>
+                <th className="texto-izq" style={{ padding: '10px 12px' }}>Categoría</th>
+                <th className="texto-izq" style={{ padding: '10px 12px' }}>Rubro</th>
+                <th className="texto-centro" style={{ padding: '10px 12px' }}>Precio</th>
+                <th className="texto-izq" style={{ padding: '10px 12px' }}>Depósito / Receta</th>
+                <th className="texto-centro" style={{ padding: '10px 12px' }}>Stock Físico</th>
+                <th className="texto-centro" style={{ padding: '10px 12px' }}>Acciones</th>
               </tr>
             </thead>
             <tbody>
@@ -433,88 +491,120 @@ export default function Productos() {
                 return (
                   <tr key={prod.id_producto} style={{ opacity: estaOculto ? 0.4 : 1, backgroundColor: esCombo ? '#131111' : 'transparent' }}>
                     
-                    <td className="font-fuerte">
+                    <td className="font-fuerte" style={{ padding: '10px 12px' }}>
                       {esCombo && "✨ "}
                       {esEditando ? (
-                        <div style={{display: 'flex', flexDirection: 'column', gap: '8px'}}>
-                          <input type="text" value={editNombre} onChange={(e) => setEditNombre(e.target.value)} className="input-tabla" style={{width: '100%'}}/>
-                          <div style={{fontSize: '0.8rem', color: '#666'}}>
-                            <label>Foto (Opcional): </label>
-                            <input type="file" accept="image/*" onChange={(e) => setEditArchivo(e.target.files ? e.target.files[0] : null)} style={{maxWidth: '100%'}}/>
+                        <div style={{display: 'flex', flexDirection: 'column', gap: '6px'}}>
+                          <input type="text" value={editNombre} onChange={(e) => setEditNombre(e.target.value)} className="input-tabla" style={{width: '100%', fontSize: '0.95rem', padding: '5px 8px'}}/>
+                          <div style={{fontSize: '0.85rem', color: '#666'}}>
+                            <label>Foto: </label>
+                            <input type="file" accept="image/*" onChange={(e) => setEditArchivo(e.target.files ? e.target.files[0] : null)} style={{maxWidth: '100%', fontSize: '0.85rem'}}/>
                           </div>
                         </div>
                       ) : (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                          <span>{prod.nombre} {estaOculto && " 🙈 (Oculto)"}</span>
+                          <span>{prod.nombre} {estaOculto && " 🙈"}</span>
                           
                           {prod.precio > 0 ? (
-                            <span style={{ fontSize: '0.70rem', padding: '3px 6px', backgroundColor: '#dcfce7', color: '#166534', borderRadius: '12px', border: '1px solid #bbf7d0', whiteSpace: 'nowrap' }}>
+                            <span style={{ fontSize: '0.75rem', padding: '3px 7px', backgroundColor: '#dcfce7', color: '#166534', borderRadius: '10px', border: '1px solid #bbf7d0', whiteSpace: 'nowrap' }}>
                               ✓ Precio OK
                             </span>
                           ) : (
-                            <span style={{ fontSize: '0.70rem', padding: '3px 6px', backgroundColor: '#fee2e2', color: '#991b1b', borderRadius: '12px', border: '1px solid #fecaca', whiteSpace: 'nowrap' }}>
+                            <span style={{ fontSize: '0.75rem', padding: '3px 7px', backgroundColor: '#fee2e2', color: '#991b1b', borderRadius: '10px', border: '1px solid #fecaca', whiteSpace: 'nowrap' }}>
                               📸 Falta armar
                             </span>
                           )}
                           
                           {fotosRecientes.includes(String(prod.id_producto)) && (
-                            <span style={{ fontSize: '0.70rem', padding: '3px 6px', backgroundColor: '#fef3c7', color: '#92400e', borderRadius: '12px', border: '1px solid #fde68a', whiteSpace: 'nowrap', fontWeight: 'bold' }}>
+                            <span style={{ fontSize: '0.75rem', padding: '3px 7px', backgroundColor: '#fef3c7', color: '#92400e', borderRadius: '10px', border: '1px solid #fde68a', whiteSpace: 'nowrap', fontWeight: 'bold' }}>
                               🎉 Foto subida
                             </span>
                           )}
                         </div>
                       )}
                     </td>
-                    
-                    <td className="texto-centro">
+
+                    <td className="texto-izq" style={{ padding: '10px 12px', fontSize: '0.9rem' }}>
                       {esEditando ? (
-                        <input type="number" step="0.01" value={editPrecio} onChange={(e) => setEditPrecio(parseFloat(e.target.value) || 0)} className="input-tabla corto"/>
+                        <select 
+                          value={editCategoria} 
+                          onChange={(e) => setEditCategoria(e.target.value)} 
+                          className="input-tabla" 
+                          style={{ fontSize: '0.9rem', padding: '5px 8px', width: '100%' }}
+                        >
+                          <option value="">-- Sin asignar --</option>
+                          {CATEGORIAS.map(c => (
+                            <option key={c} value={c}>{c}</option>
+                          ))}
+                        </select>
+                      ) : (prod.categoria || '-')}
+                    </td>
+
+                    <td className="texto-izq" style={{ padding: '10px 12px', fontSize: '0.9rem' }}>
+                      {esEditando ? (
+                        <select 
+                          value={editRubro} 
+                          onChange={(e) => setEditRubro(e.target.value)} 
+                          className="input-tabla" 
+                          style={{ fontSize: '0.9rem', padding: '5px 8px', width: '100%' }}
+                        >
+                          <option value="">-- Sin asignar --</option>
+                          {RUBROS.map(r => (
+                            <option key={r} value={r}>{r}</option>
+                          ))}
+                        </select>
+                      ) : (prod.rubro || '-')}
+                    </td>
+                    
+                    <td className="texto-centro" style={{ padding: '10px 12px' }}>
+                      {esEditando ? (
+                        <input type="number" step="0.01" value={editPrecio} onChange={(e) => setEditPrecio(parseFloat(e.target.value) || 0)} className="input-tabla corto" style={{ fontSize: '0.95rem', padding: '5px 8px' }}/>
                       ) : `$${prod.precio}`}
                     </td>
                     
-                    <td className="texto-izq">
+                    <td className="texto-izq" style={{ padding: '10px 12px' }}>
                       {esCombo ? (
-                        <span style={{ fontSize: '0.85rem', color: '#854d0e', fontStyle: 'italic' }}>Promo / Combo activo</span>
+                        <span style={{ fontSize: '0.9rem', color: '#854d0e', fontStyle: 'italic' }}>Promo / Combo</span>
                       ) : (
                         <>
                           {prod.lotesActivos?.length > 0 ? (
                             prod.lotesActivos.map((l: any, index: number) => (
-                              <div key={l.id_lote} style={{ fontSize: '0.85rem', color: index === 0 ? '#b91c1c' : '#4b5563', fontWeight: index === 0 ? 'bold' : 'normal' }}>
-                                {index === 0 && '⚠️ '} {l.cantidad} u. {l.fecha_vencimiento ? `➡️ ${l.fecha_vencimiento.split('-').reverse().join('/')}` : ' (Sin vencimiento)'}
+                              <div key={l.id_lote} style={{ fontSize: '0.88rem', color: index === 0 ? '#b91c1c' : '#4b5563', fontWeight: index === 0 ? 'bold' : 'normal', lineHeight: '1.4' }}>
+                                {index === 0 && '⚠️ '} {l.cantidad} u. {l.fecha_vencimiento ? `➡️ ${l.fecha_vencimiento.split('-').reverse().join('/')}` : ' (Sin venc.)'}
                               </div>
                             ))
-                          ) : <span style={{ color: '#9ca3af', fontSize: '0.85rem' }}>Sin lotes activos</span>}
+                          ) : <span style={{ color: '#9ca3af', fontSize: '0.88rem' }}>Sin lotes activos</span>}
 
                           {esAgregandoLote && (
-                            <div style={{ marginTop: '10px', display: 'flex', gap: '5px' }}>
-                              <input type="number" placeholder="Cant." value={loteCant} onChange={(e) => setLoteCant(Number(e.target.value))} className="input-tabla corto"/>
-                              <input type="date" value={loteFecha} onChange={(e) => setLoteFecha(e.target.value)} className="input-tabla"/>
-                              <button onClick={() => guardarNuevoLote(prod.id_producto)} className="btn-chico btn-exito">✔</button>
-                              <button onClick={() => setLoteProductoId(null)} className="btn-chico btn-peligro">✖</button>
+                            <div style={{ marginTop: '8px', display: 'flex', gap: '4px' }}>
+                              <input type="number" placeholder="Cant." value={loteCant} onChange={(e) => setLoteCant(Number(e.target.value))} className="input-tabla corto" style={{ fontSize: '0.88rem', padding: '5px 7px' }}/>
+                              <input type="date" value={loteFecha} onChange={(e) => setLoteFecha(e.target.value)} className="input-tabla" style={{ fontSize: '0.88rem', padding: '5px 7px' }}/>
+                              <button onClick={() => guardarNuevoLote(prod.id_producto)} className="btn-chico btn-exito" style={{ fontSize: '0.88rem', padding: '5px 10px' }}>✔</button>
+                              <button onClick={() => setLoteProductoId(null)} className="btn-chico btn-peligro" style={{ fontSize: '0.88rem', padding: '5px 10px' }}>✖</button>
                             </div>
                           )}
                         </>
                       )}
                     </td>
 
-                    <td className="texto-centro">
+                    <td className="texto-centro" style={{ padding: '10px 12px', fontSize: '0.9rem' }}>
                       {esCombo ? <span className="badge badge-verde">Promo</span> : <span className={prod.stock_fisico > 0 ? 'badge badge-verde' : 'badge badge-rojo'}>{prod.stock_fisico} u.</span>}
                     </td>
                     
-                    <td className="texto-centro">
+                    <td className="texto-centro" style={{ padding: '10px 12px' }}>
                       {!esEditando && !esAgregandoLote && (
-                        <div className="grupo-botones-centro" style={{gap: '4px'}}>
-                           {!esCombo && <button onClick={() => activarCargaLote(prod.id_producto)} className="btn-chico btn-primario">+ Lote</button>}
-                           <button onClick={() => activarEdicion(prod)} className="btn-chico btn-secundario">✏️ Editar</button>
-                           <button onClick={() => toggleActivo(prod)} className="btn-chico" style={{backgroundColor: estaOculto ? '#16a34a' : '#ca8a04', color: '#fff'}}>
+                        <div style={{display: 'flex', gap: '6px', justifyContent: 'center', alignItems: 'center', flexWrap: 'nowrap'}}>
+                           {!esCombo && <button onClick={() => activarCargaLote(prod.id_producto)} className="btn-chico btn-primario" style={{ fontSize: '0.82rem', padding: '5px 10px', whiteSpace: 'nowrap' }}>+ Lote</button>}
+                           <button onClick={() => activarEdicion(prod)} className="btn-chico btn-secundario" style={{ fontSize: '0.82rem', padding: '5px 10px', whiteSpace: 'nowrap' }}>✏️ Editar</button>
+                           <button onClick={() => toggleActivo(prod)} className="btn-chico" style={{ fontSize: '0.82rem', padding: '5px 10px', whiteSpace: 'nowrap', backgroundColor: estaOculto ? '#16a34a' : '#ca8a04', color: '#fff' }}>
                              {estaOculto ? '👁️ Mostrar' : '🙈 Ocultar'}
                            </button>
                         </div>
                       )}
                       {esEditando && (
-                        <div className="grupo-botones-centro">
-                          <button onClick={() => guardarEdicion(prod.id_producto)} className="btn-chico btn-exito" disabled={subiendo}>{subiendo ? '...' : 'Guardar'}</button>
-                          <button onClick={() => setEditandoId(null)} className="btn-chico btn-peligro" disabled={subiendo}>Cancelar</button>
+                        <div style={{display: 'flex', gap: '6px', justifyContent: 'center', alignItems: 'center', flexWrap: 'nowrap'}}>
+                          <button onClick={() => guardarEdicion(prod.id_producto)} className="btn-chico btn-exito" disabled={subiendo} style={{ fontSize: '0.82rem', padding: '5px 12px', whiteSpace: 'nowrap' }}>{subiendo ? '...' : '💾 Guardar'}</button>
+                          <button onClick={() => setEditandoId(null)} className="btn-chico btn-peligro" disabled={subiendo} style={{ fontSize: '0.82rem', padding: '5px 12px', whiteSpace: 'nowrap' }}>❌ Cancelar</button>
                         </div>
                       )}
                     </td>
@@ -523,7 +613,7 @@ export default function Productos() {
               })}
               {productosFiltrados.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="texto-centro" style={{padding: '20px', color: '#6b7280'}}>
+                  <td colSpan={7} className="texto-centro" style={{padding: '20px', color: '#6b7280', fontSize: '0.95rem'}}>
                     {busqueda ? `No se encontraron productos que coincidan con "${busqueda}".` : 'No hay productos en esta categoría.'}
                   </td>
                 </tr>
