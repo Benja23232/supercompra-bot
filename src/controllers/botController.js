@@ -38,7 +38,6 @@ async function enviarMenuRubros(numeroCliente) {
                 interactive: {
                     type: "list",
                     header: { type: "text", text: "🛒 Supercompra" },
-                    // --- CORRECCIÓN: Aviso inicial agregado ---
                     body: { text: "¡Hola! 👋 Bienvenido a nuestro súper.\n\n⚠️ *AVISO IMPORTANTE:* Los pedidos realizados desde el viernes por la tarde y durante el fin de semana se despacharán a partir del día lunes.\n\nDesplegá el menú de abajo para ver nuestros rubros." },
                     footer: { text: "Navegá por nuestro catálogo" },
                     action: {
@@ -235,7 +234,6 @@ const recibirMensaje = async (req, res) => {
                 return res.sendStatus(200); 
             }
 
-            // Si escribe cualquier cosa (Hola, Menu, etc.), le mandamos el menú principal
             await enviarMenuRubros(numeroCliente);
         }
 
@@ -338,7 +336,6 @@ const recibirMensaje = async (req, res) => {
 
                 pedidosEsperandoDireccion.set(numeroCliente, { idPedido: idNuevoPedido, subtotal: subtotal, total: totalCarrito });
                 
-                // --- CORRECCIÓN: Aviso al confirmar el carrito ---
                 await enviarMensaje(numeroCliente, "🛒 ¡Recibimos tu pedido y verificamos que hay stock de todo!\n\n🚚 *Recordatorio:* Tu pedido se despachará a partir del día lunes.\n\nPara el envío, podés hacer dos cosas:\n1️⃣ *Escribirnos la dirección* (Ej: Belgrano 1024)\n2️⃣ Tocar el 📎 (clip) abajo y enviarnos tu *Ubicación actual* de WhatsApp para mayor precisión.");
 
             } catch (errorBD) {
@@ -350,20 +347,17 @@ const recibirMensaje = async (req, res) => {
         if (message.type === 'interactive') {
             let opcion = message.interactive.type === 'button_reply' ? message.interactive.button_reply.id : message.interactive.list_reply.id;
 
-            // A) VOLVER AL MENÚ PRINCIPAL
             if (opcion === 'ver_menu_rubros') {
                 await enviarMenuRubros(numeroCliente);
                 return res.sendStatus(200);
             }
 
-            // B) CUANDO ELIGE UN RUBRO -> Mandamos las Categorías
             if (opcion.startsWith('rubro_')) {
                 const rubroElegido = opcion.replace('rubro_', '');
                 await enviarMenuCategorias(numeroCliente, rubroElegido);
                 return res.sendStatus(200);
             }
 
-            // C) CUANDO ELIGE UNA CATEGORÍA -> Mandamos el product_list de Meta (Máx 30)
             if (opcion.startsWith('cat_')) {
                 const categoriaElegida = opcion.replace('cat_', '');
                 
@@ -374,7 +368,6 @@ const recibirMensaje = async (req, res) => {
                         const nombreCategoriaReal = resProductos.rows[0].categoria;
                         const productItems = resProductos.rows.map(p => ({ product_retailer_id: p.id_producto }));
                         
-                        // 1. Mandamos la lista de productos
                         const dataListaProductos = {
                             messaging_product: "whatsapp",
                             recipient_type: "individual",
@@ -395,7 +388,6 @@ const recibirMensaje = async (req, res) => {
                         };
                         await axios.post(`https://graph.facebook.com/v17.0/${process.env.WHATSAPP_PHONE_ID}/messages`, dataListaProductos, { headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` } });
 
-                        // 2. Botón para retroceder
                         const dataBotonVolver = {
                             messaging_product: "whatsapp",
                             to: numeroCliente,
@@ -421,7 +413,6 @@ const recibirMensaje = async (req, res) => {
                 return res.sendStatus(200); 
             }
 
-            // D) GESTIÓN DE TURNOS DE ENTREGA
             if (opcion === 'entrega_manana' || opcion === 'entrega_tarde' || opcion === 'envio_full') {
                 const idPedidoAsociado = pedidosEsperandoTurno.get(numeroCliente);
                 if (!idPedidoAsociado) return await enviarMensaje(numeroCliente, "La sesión expiró, por favor reenviá tu carrito.");
@@ -484,7 +475,6 @@ const recibirMensaje = async (req, res) => {
                 await axios.post(`https://graph.facebook.com/v17.0/${process.env.WHATSAPP_PHONE_ID}/messages`, dataMenuPago, { headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` } });
             }
 
-            // E) GESTIÓN DE MÉTODOS DE PAGO
             if (opcion === 'pago_mp' || opcion === 'pago_transferencia' || opcion === 'pago_cuenta_dni' || opcion === 'pago_efectivo' || opcion === 'pago_tarjeta_pampa') {
                 const idPedidoAsociado = pedidosEsperandoPago.get(numeroCliente);
                 if (!idPedidoAsociado) return await enviarMensaje(numeroCliente, "Hubo un problema con tu sesión de pago.");
@@ -519,6 +509,20 @@ const recibirMensaje = async (req, res) => {
                     await dispararEnvioFactura(idPedidoAsociado, numeroCliente);
 
                 } else if (opcion === 'pago_mp') {
+                    
+                    // ==========================================
+                    // TRAMPA DE DEBUGGING (Logs de Vercel)
+                    // ==========================================
+                    console.log("==================================================");
+                    console.log("⚠️ DEBUG MP - Verificando Token al generar link:");
+                    const tokenActual = process.env.MP_ACCESS_TOKEN;
+                    if (tokenActual) {
+                        console.log(`✅ Token encontrado: ${tokenActual.substring(0, 14)}...`);
+                    } else {
+                        console.log("❌ ERROR CRÍTICO: El token está UNDEFINED (Vercel no lo está inyectando)");
+                    }
+                    console.log("==================================================");
+
                     try {
                         const responsePreference = await preferenceClient.create({
                             body: {
