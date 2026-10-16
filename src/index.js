@@ -44,10 +44,16 @@ app.post('/mercadopago-webhook', async (req, res) => {
             if (pagoInfo.status === 'approved') {
                 const idPedido = pagoInfo.external_reference;
 
-                // C. Actualizamos la base de datos
+                // C. Actualizamos la base de datos (Pagos y Pedidos)
                 await pool.query(
                     "UPDATE pagos SET estado = 'Aprobado', transaccion_id = $1 WHERE id_pedido = $2",
                     [pagoInfo.id, idPedido]
+                );
+
+                // --- CORRECCIÓN: Pasar el pedido a En Preparación ---
+                await pool.query(
+                    "UPDATE pedidos SET estado = 'En Preparación' WHERE id_pedido = $1",
+                    [idPedido]
                 );
 
                 // D. Buscamos al cliente para avisarle
