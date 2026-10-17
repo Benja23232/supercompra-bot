@@ -186,8 +186,11 @@ export default function Productos() {
     const data = await res.json();
     if (!res.ok || !data.success) {
       alert("Error al actualizar");
-    } else if (fotoSubida) {
-      setFotosRecientes(prev => [...prev, String(id)]);
+    } else {
+      alert(`✅ "${editNombre}" se actualizó correctamente`);
+      if (fotoSubida) {
+        setFotosRecientes(prev => [...prev, String(id)]);
+      }
     }
     
     setEditandoId(null);
@@ -242,7 +245,8 @@ export default function Productos() {
       await supabase.storage.from('productos').upload(nombreArchivo, formArchivo);
       imageUrl = supabase.storage.from('productos').getPublicUrl(nombreArchivo).data.publicUrl;
     }
-    await fetch('/api/productos', {
+    const nombreCreado = formNombre;
+    const res = await fetch('/api/productos', {
       method: 'POST', 
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
@@ -255,6 +259,14 @@ export default function Productos() {
         rubro: formRubro
       })
     });
+
+    const data = await res.json();
+    if (!res.ok || data?.success === false) {
+      alert("Error al crear el producto");
+    } else {
+      alert(`✅ "${nombreCreado}" se creó correctamente`);
+    }
+
     setFormNombre(''); setFormPrecio(''); setFormStock(''); setFormVencimiento(''); setFormArchivo(null); setFormCategoria('Almacén y Varios'); setFormRubro('');
     setMostrarFormulario(false); fetchProductos(); setSubiendo(false);
   };
@@ -285,10 +297,18 @@ export default function Productos() {
       imageUrl = supabase.storage.from('productos').getPublicUrl(nombreArchivo).data.publicUrl;
     }
 
-    await fetch('/api/combos', {
+    const nombreCreado = formNombre;
+    const res = await fetch('/api/combos', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ nombre: formNombre, precio: Number(formPrecio), image_url: imageUrl, productos_combo: comboItems, categoria: 'Combos y Ofertas' })
     });
+
+    const data = await res.json();
+    if (!res.ok || data?.success === false) {
+      alert("Error al crear la promo");
+    } else {
+      alert(`✅ La promo "${nombreCreado}" se creó correctamente`);
+    }
 
     setFormNombre(''); setFormPrecio(''); setComboItems([]); setFormArchivo(null);
     setMostrarFormCombo(false); fetchProductos(); setSubiendo(false);
@@ -469,7 +489,17 @@ export default function Productos() {
 
       {loading ? <p className="texto-cargando">Cargando...</p> : (
         <div className="contenedor-tabla">
-          <table className="tabla-datos" style={{ fontSize: '0.95rem' }}>
+          {/* table-layout fijo + colgroup: así las columnas no se corren de ancho al pasar a modo edición */}
+          <table className="tabla-datos" style={{ fontSize: '0.95rem', tableLayout: 'fixed', width: '100%' }}>
+            <colgroup>
+              <col style={{ width: '26%' }} />
+              <col style={{ width: '14%' }} />
+              <col style={{ width: '14%' }} />
+              <col style={{ width: '9%' }} />
+              <col style={{ width: '17%' }} />
+              <col style={{ width: '8%' }} />
+              <col style={{ width: '12%' }} />
+            </colgroup>
             <thead>
               <tr>
                 <th className="texto-izq" style={{ padding: '10px 12px' }}>Producto / Promo</th>
@@ -491,11 +521,11 @@ export default function Productos() {
                 return (
                   <tr key={prod.id_producto} style={{ opacity: estaOculto ? 0.4 : 1, backgroundColor: esCombo ? '#131111' : 'transparent' }}>
                     
-                    <td className="font-fuerte" style={{ padding: '10px 12px' }}>
+                    <td className="font-fuerte" style={{ padding: '10px 12px', overflowWrap: 'break-word' }}>
                       {esCombo && "✨ "}
                       {esEditando ? (
                         <div style={{display: 'flex', flexDirection: 'column', gap: '6px'}}>
-                          <input type="text" value={editNombre} onChange={(e) => setEditNombre(e.target.value)} className="input-tabla" style={{width: '100%', fontSize: '0.95rem', padding: '5px 8px'}}/>
+                          <input type="text" value={editNombre} onChange={(e) => setEditNombre(e.target.value)} className="input-tabla" style={{width: '100%', fontSize: '0.95rem', padding: '5px 8px', boxSizing: 'border-box'}}/>
                           <div style={{fontSize: '0.85rem', color: '#666'}}>
                             <label>Foto: </label>
                             <input type="file" accept="image/*" onChange={(e) => setEditArchivo(e.target.files ? e.target.files[0] : null)} style={{maxWidth: '100%', fontSize: '0.85rem'}}/>
@@ -524,13 +554,13 @@ export default function Productos() {
                       )}
                     </td>
 
-                    <td className="texto-izq" style={{ padding: '10px 12px', fontSize: '0.9rem' }}>
+                    <td className="texto-izq" style={{ padding: '10px 12px', fontSize: '0.9rem', overflowWrap: 'break-word' }}>
                       {esEditando ? (
                         <select 
                           value={editCategoria} 
                           onChange={(e) => setEditCategoria(e.target.value)} 
                           className="input-tabla" 
-                          style={{ fontSize: '0.9rem', padding: '5px 8px', width: '100%' }}
+                          style={{ fontSize: '0.9rem', padding: '5px 8px', width: '100%', boxSizing: 'border-box' }}
                         >
                           <option value="">-- Sin asignar --</option>
                           {CATEGORIAS.map(c => (
@@ -540,13 +570,13 @@ export default function Productos() {
                       ) : (prod.categoria || '-')}
                     </td>
 
-                    <td className="texto-izq" style={{ padding: '10px 12px', fontSize: '0.9rem' }}>
+                    <td className="texto-izq" style={{ padding: '10px 12px', fontSize: '0.9rem', overflowWrap: 'break-word' }}>
                       {esEditando ? (
                         <select 
                           value={editRubro} 
                           onChange={(e) => setEditRubro(e.target.value)} 
                           className="input-tabla" 
-                          style={{ fontSize: '0.9rem', padding: '5px 8px', width: '100%' }}
+                          style={{ fontSize: '0.9rem', padding: '5px 8px', width: '100%', boxSizing: 'border-box' }}
                         >
                           <option value="">-- Sin asignar --</option>
                           {RUBROS.map(r => (
@@ -558,11 +588,11 @@ export default function Productos() {
                     
                     <td className="texto-centro" style={{ padding: '10px 12px' }}>
                       {esEditando ? (
-                        <input type="number" step="0.01" value={editPrecio} onChange={(e) => setEditPrecio(parseFloat(e.target.value) || 0)} className="input-tabla corto" style={{ fontSize: '0.95rem', padding: '5px 8px' }}/>
+                        <input type="number" step="0.01" value={editPrecio} onChange={(e) => setEditPrecio(parseFloat(e.target.value) || 0)} className="input-tabla corto" style={{ fontSize: '0.95rem', padding: '5px 8px', width: '100%', boxSizing: 'border-box' }}/>
                       ) : `$${prod.precio}`}
                     </td>
                     
-                    <td className="texto-izq" style={{ padding: '10px 12px' }}>
+                    <td className="texto-izq" style={{ padding: '10px 12px', overflowWrap: 'break-word' }}>
                       {esCombo ? (
                         <span style={{ fontSize: '0.9rem', color: '#854d0e', fontStyle: 'italic' }}>Promo / Combo</span>
                       ) : (
@@ -576,8 +606,8 @@ export default function Productos() {
                           ) : <span style={{ color: '#9ca3af', fontSize: '0.88rem' }}>Sin lotes activos</span>}
 
                           {esAgregandoLote && (
-                            <div style={{ marginTop: '8px', display: 'flex', gap: '4px' }}>
-                              <input type="number" placeholder="Cant." value={loteCant} onChange={(e) => setLoteCant(Number(e.target.value))} className="input-tabla corto" style={{ fontSize: '0.88rem', padding: '5px 7px' }}/>
+                            <div style={{ marginTop: '8px', display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                              <input type="number" placeholder="Cant." value={loteCant} onChange={(e) => setLoteCant(Number(e.target.value))} className="input-tabla corto" style={{ fontSize: '0.88rem', padding: '5px 7px', width: '70px' }}/>
                               <input type="date" value={loteFecha} onChange={(e) => setLoteFecha(e.target.value)} className="input-tabla" style={{ fontSize: '0.88rem', padding: '5px 7px' }}/>
                               <button onClick={() => guardarNuevoLote(prod.id_producto)} className="btn-chico btn-exito" style={{ fontSize: '0.88rem', padding: '5px 10px' }}>✔</button>
                               <button onClick={() => setLoteProductoId(null)} className="btn-chico btn-peligro" style={{ fontSize: '0.88rem', padding: '5px 10px' }}>✖</button>
@@ -591,20 +621,22 @@ export default function Productos() {
                       {esCombo ? <span className="badge badge-verde">Promo</span> : <span className={prod.stock_fisico > 0 ? 'badge badge-verde' : 'badge badge-rojo'}>{prod.stock_fisico} u.</span>}
                     </td>
                     
-                    <td className="texto-centro" style={{ padding: '10px 12px' }}>
+                    {/* Acciones: columna de ancho fijo (ver colgroup) y botones apilados en columna
+                        en vez de en fila, así nunca empujan ni corren el resto de la tabla */}
+                    <td className="texto-centro" style={{ padding: '10px 8px' }}>
                       {!esEditando && !esAgregandoLote && (
-                        <div style={{display: 'flex', gap: '6px', justifyContent: 'center', alignItems: 'center', flexWrap: 'nowrap'}}>
-                           {!esCombo && <button onClick={() => activarCargaLote(prod.id_producto)} className="btn-chico btn-primario" style={{ fontSize: '0.82rem', padding: '5px 10px', whiteSpace: 'nowrap' }}>+ Lote</button>}
-                           <button onClick={() => activarEdicion(prod)} className="btn-chico btn-secundario" style={{ fontSize: '0.82rem', padding: '5px 10px', whiteSpace: 'nowrap' }}>✏️ Editar</button>
-                           <button onClick={() => toggleActivo(prod)} className="btn-chico" style={{ fontSize: '0.82rem', padding: '5px 10px', whiteSpace: 'nowrap', backgroundColor: estaOculto ? '#16a34a' : '#ca8a04', color: '#fff' }}>
+                        <div style={{display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'stretch'}}>
+                           {!esCombo && <button onClick={() => activarCargaLote(prod.id_producto)} className="btn-chico btn-primario" style={{ fontSize: '0.8rem', padding: '5px 8px', width: '100%', boxSizing: 'border-box' }}>+ Lote</button>}
+                           <button onClick={() => activarEdicion(prod)} className="btn-chico btn-secundario" style={{ fontSize: '0.8rem', padding: '5px 8px', width: '100%', boxSizing: 'border-box' }}>✏️ Editar</button>
+                           <button onClick={() => toggleActivo(prod)} className="btn-chico" style={{ fontSize: '0.8rem', padding: '5px 8px', width: '100%', boxSizing: 'border-box', backgroundColor: estaOculto ? '#16a34a' : '#ca8a04', color: '#fff' }}>
                              {estaOculto ? '👁️ Mostrar' : '🙈 Ocultar'}
                            </button>
                         </div>
                       )}
                       {esEditando && (
-                        <div style={{display: 'flex', gap: '6px', justifyContent: 'center', alignItems: 'center', flexWrap: 'nowrap'}}>
-                          <button onClick={() => guardarEdicion(prod.id_producto)} className="btn-chico btn-exito" disabled={subiendo} style={{ fontSize: '0.82rem', padding: '5px 12px', whiteSpace: 'nowrap' }}>{subiendo ? '...' : '💾 Guardar'}</button>
-                          <button onClick={() => setEditandoId(null)} className="btn-chico btn-peligro" disabled={subiendo} style={{ fontSize: '0.82rem', padding: '5px 12px', whiteSpace: 'nowrap' }}>❌ Cancelar</button>
+                        <div style={{display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'stretch'}}>
+                          <button onClick={() => guardarEdicion(prod.id_producto)} className="btn-chico btn-exito" disabled={subiendo} style={{ fontSize: '0.8rem', padding: '5px 8px', width: '100%', boxSizing: 'border-box' }}>{subiendo ? '...' : '💾 Guardar'}</button>
+                          <button onClick={() => setEditandoId(null)} className="btn-chico btn-peligro" disabled={subiendo} style={{ fontSize: '0.8rem', padding: '5px 8px', width: '100%', boxSizing: 'border-box' }}>❌ Cancelar</button>
                         </div>
                       )}
                     </td>
