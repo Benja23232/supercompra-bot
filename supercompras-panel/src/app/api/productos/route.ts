@@ -3,14 +3,14 @@ import { supabase } from '@/lib/supabase';
 
 export async function POST(request: Request) {
   try {
-    // Agregamos 'categoria' a la destructuración de datos
-    const { nombre, precio, stock_fisico, image_url, fecha_vencimiento, categoria } = await request.json();
+    // Se extrae también el 'rubro' del cuerpo de la petición
+    const { nombre, precio, stock_fisico, image_url, fecha_vencimiento, categoria, rubro } = await request.json();
 
     if (!nombre || precio === undefined || stock_fisico === undefined) {
       return NextResponse.json({ success: false, error: 'Faltan datos obligatorios' }, { status: 400 });
     }
 
-    // Le pasamos la categoría a la inserción (si viene vacío le ponemos 'Sin asignar' por defecto)
+    // Se agrega el campo rubro a la inserción
     const { data: productoCreado, error } = await supabase
       .from('productos')
       .insert([{ 
@@ -18,7 +18,8 @@ export async function POST(request: Request) {
         precio: Number(precio), 
         stock_fisico: Number(stock_fisico), 
         activo: true,
-        categoria: categoria || 'Sin asignar' 
+        categoria: categoria || 'Sin asignar',
+        rubro: rubro || null
       }])
       .select()
       .single();
@@ -61,20 +62,23 @@ export async function POST(request: Request) {
   }
 }
 
-// Método PUT para editar nombre, precio, foto o cambiar visibilidad (Ocultar/Mostrar)
+// Método PUT para editar nombre, precio, foto, categoría, rubro o cambiar visibilidad
 export async function PUT(request: Request) {
   try {
-    const { id_producto, nombre, precio, activo, image_url } = await request.json(); // Añadido image_url
+    // Se extraen 'categoria' y 'rubro' para que también se puedan editar
+    const { id_producto, nombre, precio, activo, image_url, categoria, rubro } = await request.json(); 
 
     if (!id_producto) {
       return NextResponse.json({ success: false, error: 'Falta ID' }, { status: 400 });
     }
 
-    // 1. Actualizamos Supabase con los campos que sí tiene la tabla (nombre, precio, activo)
+    // 1. Actualizamos Supabase con los campos enviados
     const updateData: any = {};
     if (nombre !== undefined) updateData.nombre = nombre.trim();
     if (precio !== undefined) updateData.precio = Number(precio);
     if (activo !== undefined) updateData.activo = activo;
+    if (categoria !== undefined) updateData.categoria = categoria;
+    if (rubro !== undefined) updateData.rubro = rubro;
 
     const { data: prodActualizado, error } = await supabase
       .from('productos')
