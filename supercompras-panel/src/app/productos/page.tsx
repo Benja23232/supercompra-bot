@@ -336,6 +336,20 @@ export default function Productos() {
 
   return (
     <main className="contenedor-pagina">
+      {/* Saca las flechitas de subir/bajar de los inputs numéricos de precio,
+          así con 4+ dígitos (ej. 5000.00) se ve el número completo */}
+      <style>{`
+        .input-precio::-webkit-outer-spin-button,
+        .input-precio::-webkit-inner-spin-button {
+          -webkit-appearance: none;
+          margin: 0;
+        }
+        .input-precio[type=number] {
+          -moz-appearance: textfield;
+          appearance: textfield;
+        }
+      `}</style>
+
       <Link href="/dashboard" className="link-volver">🔙 Volver al panel principal</Link>
 
       <div className="encabezado-pagina">
@@ -354,7 +368,7 @@ export default function Productos() {
         <form onSubmit={crearProducto} className="formulario-nuevo" style={{ flexWrap: 'wrap' }}>
           <h3 style={{width: '100%', marginBottom: '10px'}}>Alta de Producto Individual</h3>
           <div className="campo-form grow"><label className="label-form">Nombre</label><input type="text" required value={formNombre} onChange={(e) => setFormNombre(e.target.value)} className="input-form"/></div>
-          <div className="campo-form num"><label className="label-form">Precio ($)</label><input type="number" required min="0" step="0.01" value={formPrecio} onChange={(e) => setFormPrecio(Number(e.target.value))} className="input-form"/></div>
+          <div className="campo-form num"><label className="label-form">Precio ($)</label><input type="number" required min="0" step="0.01" value={formPrecio} onChange={(e) => setFormPrecio(Number(e.target.value))} className="input-form input-precio"/></div>
           <div className="campo-form num"><label className="label-form">Stock Inicial</label><input type="number" required min="0" value={formStock} onChange={(e) => setFormStock(Number(e.target.value))} className="input-form"/></div>
           
           <div className="campo-form num">
@@ -390,7 +404,7 @@ export default function Productos() {
         <form onSubmit={crearCombo} className="formulario-nuevo" style={{ flexWrap: 'wrap', backgroundColor: '#fffbe1', borderColor: '#fef08a' }}>
           <h3 style={{width: '100%', marginBottom: '10px', color: '#854d0e'}}>✨ Armar Promoción / Combo</h3>
           <div className="campo-form grow"><label className="label-form">Nombre de la Promo</label><input type="text" required value={formNombre} onChange={(e) => setFormNombre(e.target.value)} className="input-form" placeholder="Ej: 2x1 Alfajor Jorgito"/></div>
-          <div className="campo-form num"><label className="label-form">Precio Final ($)</label><input type="number" required min="0" step="0.01" value={formPrecio} onChange={(e) => setFormPrecio(Number(e.target.value))} className="input-form"/></div>
+          <div className="campo-form num"><label className="label-form">Precio Final ($)</label><input type="number" required min="0" step="0.01" value={formPrecio} onChange={(e) => setFormPrecio(Number(e.target.value))} className="input-form input-precio"/></div>
           <div className="campo-form grow" style={{ width: '100%' }}><label className="label-form">Imagen Promocional</label><input type="file" accept="image/*" onChange={(e) => setFormArchivo(e.target.files ? e.target.files[0] : null)} className="input-form"/></div>
 
           <div style={{width: '100%', padding: '15px', background: '#fff', borderRadius: '8px', border: '1px dashed #ccc', margin: '10px 0'}}>
@@ -495,8 +509,8 @@ export default function Productos() {
               <col style={{ width: '26%' }} />
               <col style={{ width: '14%' }} />
               <col style={{ width: '14%' }} />
-              <col style={{ width: '9%' }} />
-              <col style={{ width: '17%' }} />
+              <col style={{ width: '12%' }} />
+              <col style={{ width: '14%' }} />
               <col style={{ width: '8%' }} />
               <col style={{ width: '12%' }} />
             </colgroup>
@@ -588,7 +602,7 @@ export default function Productos() {
                     
                     <td className="texto-centro" style={{ padding: '10px 12px' }}>
                       {esEditando ? (
-                        <input type="number" step="0.01" value={editPrecio} onChange={(e) => setEditPrecio(parseFloat(e.target.value) || 0)} className="input-tabla corto" style={{ fontSize: '0.95rem', padding: '5px 8px', width: '100%', boxSizing: 'border-box' }}/>
+                        <input type="number" step="0.01" value={editPrecio} onChange={(e) => setEditPrecio(parseFloat(e.target.value) || 0)} className="input-tabla corto input-precio" style={{ fontSize: '0.95rem', padding: '5px 4px', width: '100%', boxSizing: 'border-box' }}/>
                       ) : `$${prod.precio}`}
                     </td>
                     
