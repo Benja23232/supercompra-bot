@@ -4,10 +4,6 @@ const { enviarMensaje } = require('../services/whatsapp');
 const { pool } = require('../services/db'); 
 const Tesseract = require('tesseract.js'); 
 
-const { MercadoPagoConfig, Preference } = require('mercadopago');
-const client = new MercadoPagoConfig({ accessToken: process.env.MP_ACCESS_TOKEN });
-const preferenceClient = new Preference(client);
-
 const pedidosEsperandoDireccion = new Map(); 
 const pedidosEsperandoTurno = new Map();
 const pedidosEsperandoPago = new Map();
@@ -461,10 +457,10 @@ const recibirMensaje = async (req, res) => {
                                 {
                                     title: "Opciones disponibles",
                                     rows: [
-                                        { id: "pago_mp", title: "Mercado Pago", description: "Acreditación automática" },
-                                        { id: "pago_tarjeta_pampa", title: "Tarjeta Bco Pampa", description: "Llevamos el posnet" },
+                                        // Mercado Pago fue removido de acá
                                         { id: "pago_transferencia", title: "Transferencia", description: "Por Alias o CBU" },
                                         { id: "pago_cuenta_dni", title: "Cuenta DNI", description: "Envío de comprobante" },
+                                        { id: "pago_tarjeta_pampa", title: "Tarjeta Bco Pampa", description: "Llevamos el posnet" },
                                         { id: "pago_efectivo", title: "Efectivo", description: "Pagás al recibir" }
                                     ]
                                 }
@@ -475,7 +471,7 @@ const recibirMensaje = async (req, res) => {
                 await axios.post(`https://graph.facebook.com/v17.0/${process.env.WHATSAPP_PHONE_ID}/messages`, dataMenuPago, { headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` } });
             }
 
-            if (opcion === 'pago_mp' || opcion === 'pago_transferencia' || opcion === 'pago_cuenta_dni' || opcion === 'pago_efectivo' || opcion === 'pago_tarjeta_pampa') {
+            if (opcion === 'pago_transferencia' || opcion === 'pago_cuenta_dni' || opcion === 'pago_efectivo' || opcion === 'pago_tarjeta_pampa') {
                 const idPedidoAsociado = pedidosEsperandoPago.get(numeroCliente);
                 if (!idPedidoAsociado) return await enviarMensaje(numeroCliente, "Hubo un problema con tu sesión de pago.");
 
@@ -492,7 +488,7 @@ const recibirMensaje = async (req, res) => {
                     pedidosEsperandoPago.delete(numeroCliente);
                     pedidosEsperandoComprobante.set(numeroCliente, { idPedido: idPedidoAsociado, totalEsperado: totalCompra });
                     
-                    await enviarMensaje(numeroCliente, `🏦 Elegiste abonar con ${nombreMetodo}.\n\nTotal a transferir: *$${totalCompra}*.\nAlias: *super.compra.ok*\n\nPor favor, *envianos la foto del comprobante* por este chat.`);
+                    await enviarMensaje(numeroCliente, `🏦 Elegiste abonar con ${nombreMetodo}.\n\nPara confirmar tu pedido, por favor realizá una transferencia por el total de *$${totalCompra}* a la siguiente cuenta:\n\n*CBU:* 0000003100010768128016\n*Alias:* supercompras.3lo\n\nUna vez que hagas el pago, por favor *envianos la foto del comprobante* por este chat. 🧾✅`);
 
                 } else if (opcion === 'pago_tarjeta_pampa') {
                     await pool.query(`INSERT INTO pagos (id_pedido, metodo, estado, monto) VALUES ($1, $2, $3, $4)`, [idPedidoAsociado, 'Tarjeta Bco Pampa', 'A Cobrar (Posnet)', totalCompra]);
@@ -507,39 +503,6 @@ const recibirMensaje = async (req, res) => {
                     pedidosEsperandoPago.delete(numeroCliente);
                     await enviarMensaje(numeroCliente, `💵 Pedido registrado para pagar en efectivo al recibir ($${totalCompra}). ¡Ya lo estamos armando!`);
                     await dispararEnvioFactura(idPedidoAsociado, numeroCliente);
-
-                } else if (opcion === 'pago_mp') {
-                    
-                    // ==========================================
-                    // TRAMPA DE DEBUGGING (Logs de Vercel)
-                    // ==========================================
-                    console.log("==================================================");
-                    console.log("⚠️ DEBUG MP - Verificando Token al generar link:");
-                    const tokenActual = process.env.MP_ACCESS_TOKEN;
-                    if (tokenActual) {
-                        console.log(`✅ Token encontrado: ${tokenActual.substring(0, 14)}...`);
-                    } else {
-                        console.log("❌ ERROR CRÍTICO: El token está UNDEFINED (Vercel no lo está inyectando)");
-                    }
-                    console.log("==================================================");
-
-                    try {
-                        const responsePreference = await preferenceClient.create({
-                            body: {
-                                items: [{ id: String(idPedidoAsociado), title: 'Pedido Supercompra', quantity: 1, unit_price: parseFloat(totalCompra) }],
-                                back_urls: { success: `${process.env.SERVER_URL}/pago-exitoso` },
-                                auto_return: 'approved',
-                                notification_url: `${process.env.SERVER_URL}/mercadopago-webhook`, 
-                                external_reference: String(idPedidoAsociado) 
-                            }
-                        });
-
-                        await pool.query(`INSERT INTO pagos (id_pedido, metodo, estado, transaccion_id, monto) VALUES ($1, $2, $3, $4, $5)`, [idPedidoAsociado, 'Mercado Pago', 'Pendiente', responsePreference.id, totalCompra]);
-                        pedidosEsperandoPago.delete(numeroCliente);
-                        await enviarMensaje(numeroCliente, `💳 Link de pago generado por *$${totalCompra}*:\n${responsePreference.init_point}`);
-                    } catch (errorMP) {
-                        console.error("Error MP:", errorMP);
-                    }
                 }
             }
         }
