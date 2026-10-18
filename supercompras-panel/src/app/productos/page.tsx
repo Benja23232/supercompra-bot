@@ -93,8 +93,11 @@ export default function Productos() {
   const [productoSeleccionado, setProductoSeleccionado] = useState('');
   const [cantidadSeleccionada, setCantidadSeleccionada] = useState<number>(1);
 
-  async function fetchProductos() {
-    setLoading(true);
+  async function fetchProductos(mostrarCarga = true) {
+    // mostrarCarga=false: refresco silencioso (después de guardar algo),
+    // así la tabla no desaparece de golpe con el "Cargando..." y no
+    // parece que la página se hubiera recargado.
+    if (mostrarCarga) setLoading(true);
     const { data, error } = await supabase
       .from('productos')
       .select(`*, lotes ( id_lote, cantidad, fecha_vencimiento )`);
@@ -196,7 +199,7 @@ export default function Productos() {
     setEditandoId(null);
     setEditArchivo(null);
     setSubiendo(false);
-    fetchProductos();
+    fetchProductos(false);
   };
 
   const toggleActivo = async (prod: any) => {
@@ -213,7 +216,7 @@ export default function Productos() {
 
     const data = await res.json();
     if (res.ok && data.success) {
-      fetchProductos();
+      fetchProductos(false);
     } else {
       alert("Error al cambiar estado");
     }
@@ -233,7 +236,7 @@ export default function Productos() {
       })
     });
     setLoteProductoId(null); 
-    fetchProductos();
+    fetchProductos(false);
   };
 
   const crearProducto = async (e: React.FormEvent) => {
@@ -268,7 +271,7 @@ export default function Productos() {
     }
 
     setFormNombre(''); setFormPrecio(''); setFormStock(''); setFormVencimiento(''); setFormArchivo(null); setFormCategoria('Almacén y Varios'); setFormRubro('');
-    setMostrarFormulario(false); fetchProductos(); setSubiendo(false);
+    setMostrarFormulario(false); fetchProductos(false); setSubiendo(false);
   };
 
   const agregarItemCombo = () => {
@@ -311,7 +314,7 @@ export default function Productos() {
     }
 
     setFormNombre(''); setFormPrecio(''); setComboItems([]); setFormArchivo(null);
-    setMostrarFormCombo(false); fetchProductos(); setSubiendo(false);
+    setMostrarFormCombo(false); fetchProductos(false); setSubiendo(false);
   };
 
   if (!autorizado) return <p>Cargando...</p>;
@@ -347,6 +350,47 @@ export default function Productos() {
         .input-precio[type=number] {
           -moz-appearance: textfield;
           appearance: textfield;
+        }
+
+        /* Responsive: celular y pantallas angostas */
+        @media (max-width: 640px) {
+          .encabezado-pagina {
+            flex-direction: column;
+            align-items: stretch;
+            gap: 10px;
+          }
+          .grupo-botones {
+            flex-direction: column;
+            width: 100%;
+          }
+          .grupo-botones .btn {
+            width: 100%;
+          }
+
+          /* El form de alta: cada campo ocupa todo el ancho, uno debajo del otro */
+          .formulario-nuevo {
+            flex-direction: column !important;
+          }
+          .formulario-nuevo .campo-form,
+          .formulario-nuevo .campo-form.grow,
+          .formulario-nuevo .campo-form.num {
+            width: 100% !important;
+            box-sizing: border-box;
+          }
+          .formulario-nuevo .input-form {
+            width: 100%;
+            box-sizing: border-box;
+          }
+
+          /* La tabla de productos no entra en la pantalla: la dejamos
+             scrollear horizontal en vez de aplastar las columnas */
+          .contenedor-tabla {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+          }
+          .tabla-datos {
+            min-width: 780px;
+          }
         }
       `}</style>
 
@@ -401,8 +445,8 @@ export default function Productos() {
       )}
 
       {mostrarFormCombo && (
-        <form onSubmit={crearCombo} className="formulario-nuevo" style={{ flexWrap: 'wrap', backgroundColor: '#fffbe1', borderColor: '#fef08a' }}>
-          <h3 style={{width: '100%', marginBottom: '10px', color: '#854d0e'}}>✨ Armar Promoción / Combo</h3>
+        <form onSubmit={crearCombo} className="formulario-nuevo" style={{ flexWrap: 'wrap' }}>
+          <h3 style={{width: '100%', marginBottom: '10px'}}>✨ Armar Promoción / Combo</h3>
           <div className="campo-form grow"><label className="label-form">Nombre de la Promo</label><input type="text" required value={formNombre} onChange={(e) => setFormNombre(e.target.value)} className="input-form" placeholder="Ej: 2x1 Alfajor Jorgito"/></div>
           <div className="campo-form num"><label className="label-form">Precio Final ($)</label><input type="number" required min="0" step="0.01" value={formPrecio} onChange={(e) => setFormPrecio(Number(e.target.value))} className="input-form input-precio"/></div>
           <div className="campo-form grow" style={{ width: '100%' }}><label className="label-form">Imagen Promocional</label><input type="file" accept="image/*" onChange={(e) => setFormArchivo(e.target.files ? e.target.files[0] : null)} className="input-form"/></div>
