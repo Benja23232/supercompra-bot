@@ -15,7 +15,7 @@ const mensajesProcesados = new Set();
 const COSTO_FULL = 1500;
 const MINIMO_ENVIO_GRATIS = 40000;
 
-// --- FUNCIONES AUXILIARES DE NAVEGACIÓN (RUBROS Y CATEGORÍAS) ---
+// --- FUNCIONES AUXILIARES DE NAVEGACIÓN ---
 
 async function enviarMenuRubros(numeroCliente) {
     try {
@@ -229,6 +229,27 @@ const recibirMensaje = async (req, res) => {
                 };
                 await axios.post(`https://graph.facebook.com/v17.0/${process.env.WHATSAPP_PHONE_ID}/messages`, dataBotonesTurno, { headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` } });
                 return res.sendStatus(200); 
+            }
+
+            // NUEVO: Detectar si el mensaje viene del link de una promo
+            if (textoRecibido.toLowerCase().includes('quiero pedir la promo:')) {
+                const nombrePromoBuscada = textoRecibido.split(':')[1]?.replace(/\*/g, '').trim() || '';
+                
+                try {
+                    const resPromo = await pool.query("SELECT * FROM productos WHERE nombre ILIKE $1 AND tipo = 'combo'", [`%${nombrePromoBuscada}%`]);
+                    
+                    if (resPromo.rows.length > 0) {
+                        const promo = resPromo.rows[0];
+                        await enviarMensaje(numeroCliente, `✨ ¡Encontré la promo que buscás!\n\n*${promo.nombre}*\n💰 Precio: *$${promo.precio}*\n\nPara pedirla y sumarla a tu carrito, podés explorar nuestro catálogo interactivo o consultarnos.`);
+                    } else {
+                        await enviarMensaje(numeroCliente, `¡Hola! Vi que querés consultar por una promo. Acá te comparto nuestros rubros disponibles para que elijas lo que más te guste:`);
+                    }
+                } catch (errorPromo) {
+                    console.error("Error buscando promo por texto:", errorPromo);
+                }
+                
+                await enviarMenuRubros(numeroCliente);
+                return res.sendStatus(200);
             }
 
             await enviarMenuRubros(numeroCliente);
@@ -445,7 +466,6 @@ const recibirMensaje = async (req, res) => {
                 pedidosEsperandoTurno.delete(numeroCliente);
                 pedidosEsperandoPago.set(numeroCliente, idPedidoAsociado);
 
-                // Menú de pagos reducido solo a Transferencia y Efectivo
                 const dataMenuPago = {
                     messaging_product: "whatsapp",
                     to: numeroCliente,

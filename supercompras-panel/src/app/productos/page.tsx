@@ -338,7 +338,6 @@ export default function Productos() {
 
   const productosUnitarios = productos.filter(p => p.tipo !== 'combo');
 
-  // Lógica para categorías y conteos
   const categoriasUnicas = ['Todas', ...Array.from(new Set(productos.map(p => p.categoria || 'Sin asignar')))];
   
   const getCategoriaTexto = (cat: string) => {
@@ -347,7 +346,6 @@ export default function Productos() {
     return `${cat} (${cantidad})`;
   };
 
-  // Filtrado combinado: Categoría Activa + Buscador por Nombre
   const productosFiltrados = productos.filter(p => {
     const coincideCategoria = categoriaActiva === 'Todas' || (p.categoria || 'Sin asignar') === categoriaActiva;
     const coincideNombre = (p.nombre || '').toLowerCase().includes(busqueda.toLowerCase().trim());
@@ -366,43 +364,13 @@ export default function Productos() {
           -moz-appearance: textfield;
           appearance: textfield;
         }
-
-        /* Responsive: celular y pantallas angostas */
         @media (max-width: 640px) {
-          .encabezado-pagina {
-            flex-direction: column;
-            align-items: stretch;
-            gap: 10px;
-          }
-          .grupo-botones {
-            flex-direction: column;
-            width: 100%;
-          }
-          .grupo-botones .btn {
-            width: 100%;
-          }
-
-          .formulario-nuevo {
-            flex-direction: column !important;
-          }
-          .formulario-nuevo .campo-form,
-          .formulario-nuevo .campo-form.grow,
-          .formulario-nuevo .campo-form.num {
-            width: 100% !important;
-            box-sizing: border-box;
-          }
-          .formulario-nuevo .input-form {
-            width: 100%;
-            box-sizing: border-box;
-          }
-
-          .contenedor-tabla {
-            overflow-x: auto;
-            -webkit-overflow-scrolling: touch;
-          }
-          .tabla-datos {
-            min-width: 780px;
-          }
+          .encabezado-pagina { flex-direction: column; align-items: stretch; gap: 10px; }
+          .grupo-botones { flex-direction: column; width: 100%; }
+          .grupo-botones .btn { width: 100%; }
+          .formulario-nuevo { flex-direction: column !important; }
+          .contenedor-tabla { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+          .tabla-datos { min-width: 780px; }
         }
       `}</style>
 
@@ -426,18 +394,12 @@ export default function Productos() {
           <div className="campo-form grow"><label className="label-form">Nombre</label><input type="text" required value={formNombre} onChange={(e) => setFormNombre(e.target.value)} className="input-form"/></div>
           <div className="campo-form num"><label className="label-form">Precio ($)</label><input type="number" required min="0" step="0.01" value={formPrecio} onChange={(e) => setFormPrecio(Number(e.target.value))} className="input-form input-precio"/></div>
           <div className="campo-form num"><label className="label-form">Stock Inicial</label><input type="number" required min="0" value={formStock} onChange={(e) => setFormStock(Number(e.target.value))} className="input-form"/></div>
-          
-          <div className="campo-form num">
-            <label className="label-form">Vence el (Opcional):</label>
-            <input type="date" value={formVencimiento} onChange={(e) => setFormVencimiento(e.target.value)} className="input-form"/>
-          </div>
+          <div className="campo-form num"><label className="label-form">Vence el (Opcional):</label><input type="date" value={formVencimiento} onChange={(e) => setFormVencimiento(e.target.value)} className="input-form"/></div>
 
           <div className="campo-form grow">
             <label className="label-form">Categoría</label>
             <select value={formCategoria} onChange={(e) => setFormCategoria(e.target.value)} className="input-form" required>
-              {CATEGORIAS.map(c => (
-                <option key={c} value={c}>{c}</option>
-              ))}
+              {CATEGORIAS.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
 
@@ -445,9 +407,7 @@ export default function Productos() {
             <label className="label-form">Rubro</label>
             <select value={formRubro} onChange={(e) => setFormRubro(e.target.value)} className="input-form">
               <option value="">-- Sin asignar --</option>
-              {RUBROS.map(r => (
-                <option key={r} value={r}>{r}</option>
-              ))}
+              {RUBROS.map(r => <option key={r} value={r}>{r}</option>)}
             </select>
           </div>
 
@@ -488,69 +448,19 @@ export default function Productos() {
         </form>
       )}
 
-      {/* Buscador de Productos por Nombre */}
       {!loading && productos.length > 0 && (
         <div style={{ marginBottom: '15px' }}>
           <div style={{ position: 'relative', width: '100%', maxWidth: '400px' }}>
-            <input
-              type="text"
-              placeholder="🔍 Buscar por nombre..."
-              value={busqueda}
-              onChange={(e) => setBusqueda(e.target.value)}
-              className="input-form"
-              style={{
-                width: '100%',
-                paddingRight: busqueda ? '35px' : '12px'
-              }}
-            />
-            {busqueda && (
-              <button
-                onClick={() => setBusqueda('')}
-                style={{
-                  position: 'absolute',
-                  right: '10px',
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  color: '#9ca3af',
-                  fontSize: '1rem'
-                }}
-              >
-                ✖
-              </button>
-            )}
+            <input type="text" placeholder="🔍 Buscar por nombre..." value={busqueda} onChange={(e) => setBusqueda(e.target.value)} className="input-form" style={{ width: '100%', paddingRight: busqueda ? '35px' : '12px' }}/>
+            {busqueda && <button onClick={() => setBusqueda('')} style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', fontSize: '1rem' }}>✖</button>}
           </div>
         </div>
       )}
       
-      {/* Barra de pestañas para las categorías */}
       {!loading && productos.length > 0 && (
-        <div style={{ 
-          display: 'flex', 
-          gap: '8px', 
-          flexWrap: 'wrap',
-          paddingBottom: '10px', 
-          marginBottom: '15px' 
-        }}>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', paddingBottom: '10px', marginBottom: '15px' }}>
           {categoriasUnicas.map(cat => (
-            <button 
-              key={cat}
-              onClick={() => setCategoriaActiva(cat)}
-              style={{
-                padding: '6px 14px',
-                borderRadius: '20px',
-                border: categoriaActiva === cat ? 'none' : '1px solid #d1d5db',
-                backgroundColor: categoriaActiva === cat ? '#2563eb' : '#fff',
-                color: categoriaActiva === cat ? '#fff' : '#374151',
-                cursor: 'pointer',
-                whiteSpace: 'nowrap',
-                fontWeight: categoriaActiva === cat ? '600' : '500',
-                transition: 'all 0.2s',
-                boxShadow: categoriaActiva === cat ? '0 2px 4px rgba(37, 99, 235, 0.2)' : 'none'
-              }}
-            >
+            <button key={cat} onClick={() => setCategoriaActiva(cat)} style={{ padding: '6px 14px', borderRadius: '20px', border: categoriaActiva === cat ? 'none' : '1px solid #d1d5db', backgroundColor: categoriaActiva === cat ? '#2563eb' : '#fff', color: categoriaActiva === cat ? '#fff' : '#374151', cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: categoriaActiva === cat ? '600' : '500' }}>
               {getCategoriaTexto(cat)}
             </button>
           ))}
@@ -589,137 +499,117 @@ export default function Productos() {
                 
                 return (
                   <tr key={prod.id_producto} style={{ opacity: estaOculto ? 0.4 : 1, backgroundColor: esCombo ? '#131111' : 'transparent' }}>
-                    
                     <td className="font-fuerte" style={{ padding: '10px 12px', overflowWrap: 'break-word' }}>
                       {esCombo && "✨ "}
                       {esEditando ? (
                         <div style={{display: 'flex', flexDirection: 'column', gap: '6px'}}>
-                          <input type="text" value={editNombre} onChange={(e) => setEditNombre(e.target.value)} className="input-tabla" style={{width: '100%', fontSize: '0.95rem', padding: '5px 8px', boxSizing: 'border-box'}}/>
-                          <div style={{fontSize: '0.85rem', color: '#666'}}>
-                            <label>Foto: </label>
-                            <input type="file" accept="image/*" onChange={(e) => setEditArchivo(e.target.files ? e.target.files[0] : null)} style={{maxWidth: '100%', fontSize: '0.85rem'}}/>
-                          </div>
+                          <input type="text" value={editNombre} onChange={(e) => setEditNombre(e.target.value)} className="input-tabla" style={{width: '100%', fontSize: '0.95rem', padding: '5px 8px'}}/>
+                          <input type="file" accept="image/*" onChange={(e) => setEditArchivo(e.target.files ? e.target.files[0] : null)} style={{fontSize: '0.85rem'}}/>
                         </div>
                       ) : (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                           <span>{prod.nombre} {estaOculto && " 🙈"}</span>
-                          
                           {prod.precio > 0 ? (
-                            <span style={{ fontSize: '0.75rem', padding: '3px 7px', backgroundColor: '#dcfce7', color: '#166534', borderRadius: '10px', border: '1px solid #bbf7d0', whiteSpace: 'nowrap' }}>
-                              ✓ Precio OK
-                            </span>
+                            <span style={{ fontSize: '0.75rem', padding: '3px 7px', backgroundColor: '#dcfce7', color: '#166534', borderRadius: '10px' }}>✓ Precio OK</span>
                           ) : (
-                            <span style={{ fontSize: '0.75rem', padding: '3px 7px', backgroundColor: '#fee2e2', color: '#991b1b', borderRadius: '10px', border: '1px solid #fecaca', whiteSpace: 'nowrap' }}>
-                              📸 Falta armar
-                            </span>
-                          )}
-                          
-                          {fotosRecientes.includes(String(prod.id_producto)) && (
-                            <span style={{ fontSize: '0.75rem', padding: '3px 7px', backgroundColor: '#fef3c7', color: '#92400e', borderRadius: '10px', border: '1px solid #fde68a', whiteSpace: 'nowrap', fontWeight: 'bold' }}>
-                              🎉 Foto subida
-                            </span>
+                            <span style={{ fontSize: '0.75rem', padding: '3px 7px', backgroundColor: '#fee2e2', color: '#991b1b', borderRadius: '10px' }}>📸 Falta armar</span>
                           )}
                         </div>
                       )}
                     </td>
 
-                    <td className="texto-izq" style={{ padding: '10px 12px', fontSize: '0.9rem', overflowWrap: 'break-word' }}>
+                    <td className="texto-izq" style={{ padding: '10px 12px', fontSize: '0.9rem' }}>
                       {esEditando ? (
-                        <select 
-                          value={editCategoria} 
-                          onChange={(e) => setEditCategoria(e.target.value)} 
-                          className="input-tabla" 
-                          style={{ fontSize: '0.9rem', padding: '5px 8px', width: '100%', boxSizing: 'border-box' }}
-                        >
+                        <select value={editCategoria} onChange={(e) => setEditCategoria(e.target.value)} className="input-tabla" style={{ fontSize: '0.9rem', width: '100%' }}>
                           <option value="">-- Sin asignar --</option>
-                          {CATEGORIAS.map(c => (
-                            <option key={c} value={c}>{c}</option>
-                          ))}
+                          {CATEGORIAS.map(c => <option key={c} value={c}>{c}</option>)}
                         </select>
                       ) : (prod.categoria || '-')}
                     </td>
 
-                    <td className="texto-izq" style={{ padding: '10px 12px', fontSize: '0.9rem', overflowWrap: 'break-word' }}>
+                    <td className="texto-izq" style={{ padding: '10px 12px', fontSize: '0.9rem' }}>
                       {esEditando ? (
-                        <select 
-                          value={editRubro} 
-                          onChange={(e) => setEditRubro(e.target.value)} 
-                          className="input-tabla" 
-                          style={{ fontSize: '0.9rem', padding: '5px 8px', width: '100%', boxSizing: 'border-box' }}
-                        >
+                        <select value={editRubro} onChange={(e) => setEditRubro(e.target.value)} className="input-tabla" style={{ fontSize: '0.9rem', width: '100%' }}>
                           <option value="">-- Sin asignar --</option>
-                          {RUBROS.map(r => (
-                            <option key={r} value={r}>{r}</option>
-                          ))}
+                          {RUBROS.map(r => <option key={r} value={r}>{r}</option>)}
                         </select>
                       ) : (prod.rubro || '-')}
                     </td>
                     
                     <td className="texto-centro" style={{ padding: '10px 12px' }}>
                       {esEditando ? (
-                        <input type="number" step="0.01" value={editPrecio} onChange={(e) => setEditPrecio(parseFloat(e.target.value) || 0)} className="input-tabla corto input-precio" style={{ fontSize: '0.95rem', padding: '5px 4px', width: '100%', boxSizing: 'border-box' }}/>
+                        <input type="number" step="0.01" value={editPrecio} onChange={(e) => setEditPrecio(parseFloat(e.target.value) || 0)} className="input-tabla corto input-precio" style={{ width: '100%' }}/>
                       ) : `$${prod.precio}`}
                     </td>
                     
-                    <td className="texto-izq" style={{ padding: '10px 12px', overflowWrap: 'break-word' }}>
+                    <td className="texto-izq" style={{ padding: '10px 12px' }}>
                       {esCombo ? (
                         <span style={{ fontSize: '0.9rem', color: '#854d0e', fontStyle: 'italic' }}>Promo / Combo</span>
                       ) : (
                         <>
                           {prod.lotesActivos?.length > 0 ? (
                             prod.lotesActivos.map((l: any, index: number) => (
-                              <div key={l.id_lote} style={{ fontSize: '0.88rem', color: index === 0 ? '#b91c1c' : '#4b5563', fontWeight: index === 0 ? 'bold' : 'normal', lineHeight: '1.4' }}>
-                                {index === 0 && '⚠️ '} {l.cantidad} u. {l.fecha_vencimiento ? `➡️ ${l.fecha_vencimiento.split('-').reverse().join('/')}` : ' (Sin venc.)'}
+                              <div key={l.id_lote} style={{ fontSize: '0.88rem', color: index === 0 ? '#b91c1c' : '#4b5563', fontWeight: index === 0 ? 'bold' : 'normal' }}>
+                                {index === 0 && '⚠️ '} {l.cantidad} u. {l.fecha_vencimiento ? `➡️ ${l.fecha_vencimiento.split('-').reverse().join('/')}` : ''}
                               </div>
                             ))
-                          ) : <span style={{ color: '#9ca3af', fontSize: '0.88rem' }}>Sin lotes activos</span>}
+                          ) : <span style={{ color: '#9ca3af', fontSize: '0.88rem' }}>Sin lotes</span>}
 
                           {esAgregandoLote && (
-                            <div style={{ marginTop: '8px', display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                              <input type="number" placeholder="Cant." value={loteCant} onChange={(e) => setLoteCant(Number(e.target.value))} className="input-tabla corto" style={{ fontSize: '0.88rem', padding: '5px 7px', width: '70px' }}/>
-                              <input type="date" value={loteFecha} onChange={(e) => setLoteFecha(e.target.value)} className="input-tabla" style={{ fontSize: '0.88rem', padding: '5px 7px' }}/>
-                              <button onClick={() => guardarNuevoLote(prod.id_producto)} className="btn-chico btn-exito" style={{ fontSize: '0.88rem', padding: '5px 10px' }}>✔</button>
-                              <button onClick={() => setLoteProductoId(null)} className="btn-chico btn-peligro" style={{ fontSize: '0.88rem', padding: '5px 10px' }}>✖</button>
+                            <div style={{ marginTop: '8px', display: 'flex', gap: '4px' }}>
+                              <input type="number" placeholder="Cant." value={loteCant} onChange={(e) => setLoteCant(Number(e.target.value))} className="input-tabla corto" style={{ width: '60px' }}/>
+                              <input type="date" value={loteFecha} onChange={(e) => setLoteFecha(e.target.value)} className="input-tabla"/>
+                              <button onClick={() => guardarNuevoLote(prod.id_producto)} className="btn-chico btn-exito">✔</button>
+                              <button onClick={() => setLoteProductoId(null)} className="btn-chico btn-peligro">✖</button>
                             </div>
                           )}
                         </>
                       )}
                     </td>
 
-                    <td className="texto-centro" style={{ padding: '10px 12px', fontSize: '0.9rem' }}>
+                    <td className="texto-centro" style={{ padding: '10px 12px' }}>
                       {esCombo ? <span className="badge badge-verde">Promo</span> : <span className={prod.stock_fisico > 0 ? 'badge badge-verde' : 'badge badge-rojo'}>{prod.stock_fisico} u.</span>}
                     </td>
                     
                     <td className="texto-centro" style={{ padding: '10px 8px' }}>
                       {!esEditando && !esAgregandoLote && (
-                        <div style={{display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'stretch'}}>
-                           {!esCombo && <button onClick={() => activarCargaLote(prod.id_producto)} className="btn-chico btn-primario" style={{ fontSize: '0.8rem', padding: '5px 8px', width: '100%', boxSizing: 'border-box' }}>+ Lote</button>}
-                           <button onClick={() => activarEdicion(prod)} className="btn-chico btn-secundario" style={{ fontSize: '0.8rem', padding: '5px 8px', width: '100%', boxSizing: 'border-box' }}>✏️ Editar</button>
-                           <button onClick={() => toggleActivo(prod)} className="btn-chico" style={{ fontSize: '0.8rem', padding: '5px 8px', width: '100%', boxSizing: 'border-box', backgroundColor: estaOculto ? '#16a34a' : '#ca8a04', color: '#fff' }}>
+                        <div style={{display: 'flex', flexDirection: 'column', gap: '6px'}}>
+                           {!esCombo && <button onClick={() => activarCargaLote(prod.id_producto)} className="btn-chico btn-primario" style={{ fontSize: '0.8rem', width: '100%' }}>+ Lote</button>}
+                           
+                           {/* NUEVO: Botón para copiar link de redes en los combos */}
+                           {esCombo && (
+                             <button 
+                               onClick={() => {
+                                 const textoMensaje = encodeURIComponent(`¡Hola! 👋 Quiero pedir la promo: *${prod.nombre}*`);
+                                 const numeroWhatsAppBot = "5492392480035"; // Reemplazá con tu número
+                                 const linkWa = `https://wa.me/${numeroWhatsAppBot}?text=${textoMensaje}`;
+                                 navigator.clipboard.writeText(linkWa);
+                                 alert(`✅ ¡Link copiado al portapapeles para "${prod.nombre}"!\n\nYa podés pegarlo en tus estados o redes.`);
+                               }} 
+                               className="btn-chico" 
+                               style={{ fontSize: '0.8rem', width: '100%', backgroundColor: '#059669', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', padding: '5px' }}
+                             >
+                               🔗 Copiar Link
+                             </button>
+                           )}
+
+                           <button onClick={() => activarEdicion(prod)} className="btn-chico btn-secundario" style={{ fontSize: '0.8rem', width: '100%' }}>✏️ Editar</button>
+                           <button onClick={() => toggleActivo(prod)} className="btn-chico" style={{ fontSize: '0.8rem', width: '100%', backgroundColor: estaOculto ? '#16a34a' : '#ca8a04', color: '#fff' }}>
                              {estaOculto ? '👁️ Mostrar' : '🙈 Ocultar'}
                            </button>
-                           <button onClick={() => eliminarProducto(prod)} className="btn-chico btn-peligro" style={{ fontSize: '0.8rem', padding: '5px 8px', width: '100%', boxSizing: 'border-box' }}>
-                             🗑️ Eliminar
-                           </button>
+                           <button onClick={() => eliminarProducto(prod)} className="btn-chico btn-peligro" style={{ fontSize: '0.8rem', width: '100%' }}>🗑️ Eliminar</button>
                         </div>
                       )}
                       {esEditando && (
-                        <div style={{display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'stretch'}}>
-                          <button onClick={() => guardarEdicion(prod.id_producto)} className="btn-chico btn-exito" disabled={subiendo} style={{ fontSize: '0.8rem', padding: '5px 8px', width: '100%', boxSizing: 'border-box' }}>{subiendo ? '...' : '💾 Guardar'}</button>
-                          <button onClick={() => setEditandoId(null)} className="btn-chico btn-peligro" disabled={subiendo} style={{ fontSize: '0.8rem', padding: '5px 8px', width: '100%', boxSizing: 'border-box' }}>❌ Cancelar</button>
+                        <div style={{display: 'flex', flexDirection: 'column', gap: '6px'}}>
+                          <button onClick={() => guardarEdicion(prod.id_producto)} className="btn-chico btn-exito" disabled={subiendo} style={{ fontSize: '0.8rem', width: '100%' }}>{subiendo ? '...' : '💾 Guardar'}</button>
+                          <button onClick={() => setEditandoId(null)} className="btn-chico btn-peligro" disabled={subiendo} style={{ fontSize: '0.8rem', width: '100%' }}>❌ Cancelar</button>
                         </div>
                       )}
                     </td>
                   </tr>
                 );
               })}
-              {productosFiltrados.length === 0 && (
-                <tr>
-                  <td colSpan={7} className="texto-centro" style={{padding: '20px', color: '#6b7280', fontSize: '0.95rem'}}>
-                    {busqueda ? `No se encontraron productos que coincidan con "${busqueda}".` : 'No hay productos en esta categoría.'}
-                  </td>
-                </tr>
-              )}
             </tbody>
           </table>
         </div>
