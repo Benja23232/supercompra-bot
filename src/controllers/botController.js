@@ -34,7 +34,7 @@ async function enviarMenuRubros(numeroCliente) {
                 interactive: {
                     type: "list",
                     header: { type: "text", text: "Supercompra" },
-                    body: { text: "¡Hola! 👋 Bienvenido a nuestro súper.\n\n⚠️ *AVISO IMPORTANTE:* Los pedidos realizados desde el viernes por la tarde y durante el fin de semana se despacharán a partir del día lunes.\n\nDesplegá el menú de abajo para ver nuestros rubros." },
+                    body: { text: "¡Hola! 👋 Bienvenido a nuestro súper.\n\nDesplegá el menú de abajo para ver nuestros rubros." },
                     footer: { text: "Navegá por nuestro catálogo" },
                     action: {
                         button: "Ver Rubros",
@@ -355,7 +355,7 @@ const recibirMensaje = async (req, res) => {
 
                 pedidosEsperandoDireccion.set(numeroCliente, { idPedido: idNuevoPedido, subtotal: subtotal, total: totalCarrito });
                 
-                await enviarMensaje(numeroCliente, "🛒 ¡Recibimos tu pedido y verificamos que hay stock de todo!\n\n🚚 *Recordatorio:* Tu pedido se despachará a partir del día lunes.\n\nPara el envío, podés hacer dos cosas:\n1️⃣ *Escribirnos la dirección* (Ej: Belgrano 1024)\n2️⃣ Tocar el 📎 (clip) abajo y enviarnos tu *Ubicación actual* de WhatsApp para mayor precisión.");
+                await enviarMensaje(numeroCliente, "🛒 ¡Recibimos tu pedido y verificamos que hay stock de todo!\n\nPara el envío, podés hacer dos cosas:\n1️⃣ *Escribirnos la dirección* (Ej: Belgrano 1024)\n2️⃣ Tocar el 📎 (clip) abajo y enviarnos tu *Ubicación actual* de WhatsApp para mayor precisión.");
 
             } catch (errorBD) {
                 console.error("Error BD Carrito:", errorBD);
