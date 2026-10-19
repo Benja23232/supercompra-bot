@@ -33,14 +33,14 @@ async function enviarMenuRubros(numeroCliente) {
                 type: "interactive",
                 interactive: {
                     type: "list",
-                    header: { type: "text", text: "Supercompra" }, // Sin emoji para cumplir con Meta
+                    header: { type: "text", text: "Supercompra" },
                     body: { text: "¡Hola! 👋 Bienvenido a nuestro súper.\n\n⚠️ *AVISO IMPORTANTE:* Los pedidos realizados desde el viernes por la tarde y durante el fin de semana se despacharán a partir del día lunes.\n\nDesplegá el menú de abajo para ver nuestros rubros." },
                     footer: { text: "Navegá por nuestro catálogo" },
                     action: {
                         button: "Ver Rubros",
                         sections: [{
                             title: "Rubros Principales",
-                            rows: rowsRubros.slice(0, 10) // Límite máximo de 10 permitido por Meta para listas
+                            rows: rowsRubros.slice(0, 10)
                         }]
                     }
                 }
@@ -445,6 +445,7 @@ const recibirMensaje = async (req, res) => {
                 pedidosEsperandoTurno.delete(numeroCliente);
                 pedidosEsperandoPago.set(numeroCliente, idPedidoAsociado);
 
+                // Menú de pagos reducido solo a Transferencia y Efectivo
                 const dataMenuPago = {
                     messaging_product: "whatsapp",
                     to: numeroCliente,
@@ -461,8 +462,6 @@ const recibirMensaje = async (req, res) => {
                                     title: "Opciones disponibles",
                                     rows: [
                                         { id: "pago_transferencia", title: "Transferencia", description: "Por Alias o CBU" },
-                                        { id: "pago_cuenta_dni", title: "Cuenta DNI", description: "Envío de comprobante" },
-                                        { id: "pago_tarjeta_pampa", title: "Tarjeta Bco Pampa", description: "Llevamos el posnet" },
                                         { id: "pago_efectivo", title: "Efectivo", description: "Pagás al recibir" }
                                     ]
                                 }
@@ -474,31 +473,22 @@ const recibirMensaje = async (req, res) => {
                 return res.sendStatus(200);
             }
 
-            if (opcion === 'pago_transferencia' || opcion === 'pago_cuenta_dni' || opcion === 'pago_efectivo' || opcion === 'pago_tarjeta_pampa') {
+            if (opcion === 'pago_transferencia' || opcion === 'pago_efectivo') {
                 const idPedidoAsociado = pedidosEsperandoPago.get(numeroCliente);
                 if (!idPedidoAsociado) return await enviarMensaje(numeroCliente, "Hubo un problema con tu sesión de pago.");
 
                 const resPedido = await pool.query('SELECT total_compra FROM pedidos WHERE id_pedido = $1', [idPedidoAsociado]);
                 const totalCompra = resPedido.rows[0].total_compra;
 
-                if (opcion === 'pago_transferencia' || opcion === 'pago_cuenta_dni') {
-                    const nombreMetodo = opcion === 'pago_cuenta_dni' ? 'Cuenta DNI' : 'Transferencia';
-                    
+                if (opcion === 'pago_transferencia') {
                     await pool.query(
                         `INSERT INTO pagos (id_pedido, metodo, estado, monto) VALUES ($1, $2, $3, $4)`,
-                        [idPedidoAsociado, nombreMetodo, 'Pendiente de Verificación', totalCompra]
+                        [idPedidoAsociado, 'Transferencia', 'Pendiente de Verificación', totalCompra]
                     );
                     pedidosEsperandoPago.delete(numeroCliente);
                     pedidosEsperandoComprobante.set(numeroCliente, { idPedido: idPedidoAsociado, totalEsperado: totalCompra });
                     
-                    await enviarMensaje(numeroCliente, `🏦 Elegiste abonar con ${nombreMetodo}.\n\nPara confirmar tu pedido, por favor realizá una transferencia por el total de *$${totalCompra}* a la siguiente cuenta:\n\n*CBU:* 0000003100010768128016\n*Alias:* supercompras.3lo\n\nUna vez que hagas el pago, por favor *envianos la foto del comprobante* por este chat. 🧾✅`);
-
-                } else if (opcion === 'pago_tarjeta_pampa') {
-                    await pool.query(`INSERT INTO pagos (id_pedido, metodo, estado, monto) VALUES ($1, $2, $3, $4)`, [idPedidoAsociado, 'Tarjeta Bco Pampa', 'A Cobrar (Posnet)', totalCompra]);
-                    await pool.query('UPDATE pedidos SET estado = $1 WHERE id_pedido = $2', ['En Preparación', idPedidoAsociado]);
-                    pedidosEsperandoPago.delete(numeroCliente);
-                    await enviarMensaje(numeroCliente, `💳 Pago con *Tarjeta del Banco Pampa* registrado ($${totalCompra}). ¡Llevamos el posnet al entregar!`);
-                    await dispararEnvioFactura(idPedidoAsociado, numeroCliente);
+                    await enviarMensaje(numeroCliente, `🏦 Elegiste abonar con Transferencia.\n\nPara confirmar tu pedido, por favor realizá una transferencia por el total de *$${totalCompra}* a la siguiente cuenta:\n\n*CBU:* 0000003100010768128016\n*Alias:* supercompras.3lo\n\nUna vez que hagas el pago, por favor *envianos la foto del comprobante* por este chat. 🧾✅`);
 
                 } else if (opcion === 'pago_efectivo') {
                     await pool.query(`INSERT INTO pagos (id_pedido, metodo, estado, monto) VALUES ($1, $2, $3, $4)`, [idPedidoAsociado, 'Efectivo', 'A Cobrar (Efectivo)', totalCompra]);
