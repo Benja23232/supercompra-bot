@@ -33,7 +33,7 @@ async function enviarMenuRubros(numeroCliente) {
                 type: "interactive",
                 interactive: {
                     type: "list",
-                    header: { type: "text", text: "🛒 Supercompra" },
+                    header: { type: "text", text: "Supercompra" }, // Sin emoji para que Meta lo acepte
                     body: { text: "¡Hola! 👋 Bienvenido a nuestro súper.\n\n⚠️ *AVISO IMPORTANTE:* Los pedidos realizados desde el viernes por la tarde y durante el fin de semana se despacharán a partir del día lunes.\n\nDesplegá el menú de abajo para ver nuestros rubros." },
                     footer: { text: "Navegá por nuestro catálogo" },
                     action: {
@@ -371,7 +371,7 @@ const recibirMensaje = async (req, res) => {
                             type: "interactive",
                             interactive: {
                                 type: "product_list",
-                                header: { type: "text", text: `🛒 Góndola: ${nombreCategoriaReal.substring(0, 45)}` },
+                                header: { type: "text", text: `Góndola: ${nombreCategoriaReal.substring(0, 45)}` }, // Sin emoji
                                 body: { text: `Explorá los productos y sumalos a tu carrito.` },
                                 action: {
                                     catalog_id: "2194379468072114",
@@ -448,7 +448,7 @@ const recibirMensaje = async (req, res) => {
                     type: "interactive",
                     interactive: {
                         type: "list",
-                        header: { type: "text", text: "💳 Métodos de Pago" },
+                        header: { type: "text", text: "Métodos de Pago" }, // Sin emoji
                         body: { text: `Turno agendado. El total de tu pedido es *$${totalActualizado}*.\n\nElegí cómo preferís abonarlo:` },
                         footer: { text: "Supercompra" },
                         action: {
@@ -457,7 +457,6 @@ const recibirMensaje = async (req, res) => {
                                 {
                                     title: "Opciones disponibles",
                                     rows: [
-                                        // Mercado Pago fue removido de acá
                                         { id: "pago_transferencia", title: "Transferencia", description: "Por Alias o CBU" },
                                         { id: "pago_cuenta_dni", title: "Cuenta DNI", description: "Envío de comprobante" },
                                         { id: "pago_tarjeta_pampa", title: "Tarjeta Bco Pampa", description: "Llevamos el posnet" },
