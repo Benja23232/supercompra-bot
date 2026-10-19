@@ -86,7 +86,7 @@ export default function ArmarPedido() {
   };
 
   const confirmarArmadoYDescontar = async () => {
-    const confirmar = window.confirm("¿Estás seguro de cerrar el pedido? Esto descontará el stock de la base de datos y lo dejará listo.");
+    const confirmar = window.confirm("¿Estás seguro de cerrar el pedido? Esto descontará el stock y le avisará al cliente por WhatsApp que ya está listo.");
     if (!confirmar) return;
 
     setProcesando(true);
@@ -102,18 +102,30 @@ export default function ArmarPedido() {
           .eq('id_producto', item.id_producto);
       }
 
+      await supabase
+        .from('pedidos')
+        .update({ estado: 'Armado' })
+        .eq('id_pedido', id);
+
+      // Acá llama al puente que armamos en el paso 1
+      await fetch('/api/notificar-pedido', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id_pedido: id })
+      }).catch(err => console.error("Error silencioso al notificar por WhatsApp:", err));
+
       await logAuditoria(
         'Depósito', 
         'Picking Completado', 
-        `Completó el armado del pedido #${String(id).slice(0, 8)} y descontó ${detalles.length} productos del stock.`
+        `Completó el armado del pedido #${String(id).slice(0, 8)}, descontó ${detalles.length} productos y notificó al cliente.`
       );
 
-      alert("¡Pedido armado y stock actualizado con éxito!");
+      alert("✅ ¡Pedido armado, stock descontado y cliente notificado con éxito!");
       router.push('/pedidos'); 
 
     } catch (error) {
       console.error("Error al procesar:", error);
-      alert("Hubo un error al descontar el stock.");
+      alert("Hubo un error al descontar el stock o procesar el pedido.");
     } finally {
       setProcesando(false);
     }

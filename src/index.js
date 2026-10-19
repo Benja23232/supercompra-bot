@@ -8,6 +8,9 @@ require('dotenv').config();
 const { pool } = require('./services/db');
 const { enviarMensaje } = require('./services/whatsapp');
 
+// 👇 ACÁ IMPORTAMOS LA NUEVA FUNCIÓN DEL BOT 👇
+const { notificarPedidoListo } = require('./controllers/botController');
+
 // Importamos Mercado Pago
 const { MercadoPagoConfig, Payment } = require('mercadopago');
 const client = new MercadoPagoConfig({ accessToken: process.env.MP_ACCESS_TOKEN });
@@ -174,6 +177,9 @@ app.post('/api/difusion', async (req, res) => {
         res.status(500).json({ error: 'Hubo un error en el servidor.' });
     }
 });
+
+// 👇 7. ACÁ AGREGAMOS LA NUEVA RUTA PARA AVISAR QUE EL PEDIDO ESTÁ LISTO 👇
+app.post('/api/notificar-pedido', notificarPedidoListo);
 
 // Ruta de prueba inicial
 app.get('/', (req, res) => {

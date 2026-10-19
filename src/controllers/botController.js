@@ -34,7 +34,7 @@ async function enviarMenuRubros(numeroCliente) {
                 interactive: {
                     type: "list",
                     header: { type: "text", text: "Supercompra" },
-                    body: { text: "¡Hola! 👋 Bienvenido a nuestro súper.\n\n⚠️ *AVISO IMPORTANTE:* Los pedidos realizados desde el viernes por la tarde y durante el fin de semana se despacharán a partir del día lunes.\n\nDesplegá el menú de abajo para ver nuestros rubros." },
+                    body: { text: "¡Hola! 👋 Bienvenido a nuestro súper.\n\nDesplegá el menú de abajo para ver nuestros rubros." },
                     footer: { text: "Navegá por nuestro catálogo" },
                     action: {
                         button: "Ver Rubros",
@@ -149,7 +149,6 @@ const recibirMensaje = async (req, res) => {
         const message = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
         if (!message) return res.sendStatus(200);
 
-        // --- FILTRO ANTI-DUPLICADOS ---
         if (mensajesProcesados.has(message.id)) return res.sendStatus(200);
         mensajesProcesados.add(message.id);
         if (mensajesProcesados.size > 500) mensajesProcesados.clear();
@@ -231,13 +230,10 @@ const recibirMensaje = async (req, res) => {
                 return res.sendStatus(200); 
             }
 
-            // Detección de link de promos
             if (textoRecibido.toLowerCase().includes('quiero pedir la promo:')) {
                 const nombrePromoBuscada = textoRecibido.split(':')[1]?.replace(/\*/g, '').trim() || '';
-                
                 try {
                     const resPromo = await pool.query("SELECT * FROM productos WHERE nombre ILIKE $1 AND tipo = 'combo'", [`%${nombrePromoBuscada}%`]);
-                    
                     if (resPromo.rows.length > 0) {
                         const promo = resPromo.rows[0];
                         await enviarMensaje(numeroCliente, `✨ ¡Encontré la promo que buscás!\n\n*${promo.nombre}*\n💰 Precio: *$${promo.precio}*\n\nPara pedirla y sumarla a tu carrito, podés explorar nuestro catálogo interactivo.`);
@@ -247,7 +243,6 @@ const recibirMensaje = async (req, res) => {
                 } catch (errorPromo) {
                     console.error("Error buscando promo por texto:", errorPromo);
                 }
-                
                 await enviarMenuRubros(numeroCliente);
                 return res.sendStatus(200);
             }
@@ -256,7 +251,7 @@ const recibirMensaje = async (req, res) => {
             return res.sendStatus(200);
         }
 
-        // --- 3. MANEJO DE IMÁGENES (OCR) ---
+        // --- 3. MANEJO DE IMÁGENES (OCR INTELIGENTE) ---
         if (message.type === 'image') {
             if (pedidosEsperandoComprobante.has(numeroCliente)) {
                 const datosPago = pedidosEsperandoComprobante.get(numeroCliente);
@@ -269,17 +264,30 @@ const recibirMensaje = async (req, res) => {
                     const imageBuffer = Buffer.from(responseDescarga.data, 'binary');
 
                     const { data: { text } } = await Tesseract.recognize(imageBuffer, 'spa');
-                    const montoString = String(datosPago.totalEsperado);
                     
-                    if (text.includes(montoString)) {
+                    const montoNum = Number(datosPago.totalEsperado);
+                    const montoEnteroStr = Math.floor(montoNum).toString(); 
+                    
+                    const montoConPuntoMiles = montoEnteroStr.replace(/\B(?=(\d{3})+(?!\d))/g, "."); 
+                    const montoConComaMiles = montoEnteroStr.replace(/\B(?=(\d{3})+(?!\d))/g, ","); 
+                    
+                    const textoLimpiado = text.replace(/[\$\s]/g, '');
+
+                    const pagoValidado = 
+                        text.includes(String(datosPago.totalEsperado)) || 
+                        textoLimpiado.includes(montoEnteroStr) ||         
+                        textoLimpiado.includes(montoConPuntoMiles) ||     
+                        textoLimpiado.includes(montoConComaMiles);        
+                    
+                    if (pagoValidado) {
                         await pool.query('UPDATE pagos SET estado = $1 WHERE id_pedido = $2', ['Aprobado', datosPago.idPedido]);
                         await pool.query('UPDATE pedidos SET estado = $1 WHERE id_pedido = $2', ['En Preparación', datosPago.idPedido]);
                         pedidosEsperandoComprobante.delete(numeroCliente);
                         
-                        await enviarMensaje(numeroCliente, `✅ ¡Pago validado con éxito!\n\nImporte de *$${montoString}* confirmado. Pedido en preparación.`);
+                        await enviarMensaje(numeroCliente, `✅ ¡Pago validado con éxito!\n\nImporte de *$${montoConPuntoMiles}* confirmado. ¡Pedido en preparación!`);
                         await dispararEnvioFactura(datosPago.idPedido, numeroCliente);
                     } else {
-                        await enviarMensaje(numeroCliente, `⚠️ No pude validar el monto exacto de *$${montoString}* en la foto. Un asesor lo revisará manualmente.`);
+                        await enviarMensaje(numeroCliente, `⚠️ No pude validar automáticamente el monto exacto de *$${montoConPuntoMiles}* en la foto. Un asesor lo revisará a la brevedad.`);
                         pedidosEsperandoComprobante.delete(numeroCliente);
                     }
                 } catch (errorOCR) {
@@ -355,7 +363,22 @@ const recibirMensaje = async (req, res) => {
 
                 pedidosEsperandoDireccion.set(numeroCliente, { idPedido: idNuevoPedido, subtotal: subtotal, total: totalCarrito });
                 
-                await enviarMensaje(numeroCliente, "🛒 ¡Recibimos tu pedido y verificamos que hay stock de todo!\n\n🚚 *Recordatorio:* Tu pedido se despachará a partir del día lunes.\n\nPara el envío, podés hacer dos cosas:\n1️⃣ *Escribirnos la dirección* (Ej: Belgrano 1024)\n2️⃣ Tocar el 📎 (clip) abajo y enviarnos tu *Ubicación actual* de WhatsApp para mayor precisión.");
+                const dataOpcionesEntrega = {
+                    messaging_product: "whatsapp",
+                    to: numeroCliente,
+                    type: "interactive",
+                    interactive: {
+                        type: "button",
+                        body: { text: "🛒 ¡Recibimos tu pedido y verificamos stock!\n\n¿Cómo preferís recibirlo?" },
+                        action: {
+                            buttons: [
+                                { type: "reply", reply: { id: "entrega_domicilio", title: "🚚 Envío a Domicilio" } },
+                                { type: "reply", reply: { id: "retiro_deposito", title: "🏪 Retiro en Mitre" } }
+                            ]
+                        }
+                    }
+                };
+                await axios.post(`https://graph.facebook.com/v17.0/${process.env.WHATSAPP_PHONE_ID}/messages`, dataOpcionesEntrega, { headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` } });
 
             } catch (errorBD) {
                 console.error("Error BD Carrito:", errorBD);
@@ -380,14 +403,11 @@ const recibirMensaje = async (req, res) => {
 
             if (opcion.startsWith('cat_')) {
                 const categoriaElegida = opcion.replace('cat_', '');
-                
                 try {
                     const resProductos = await pool.query("SELECT id_producto, categoria FROM productos WHERE categoria ILIKE $1 AND stock_fisico > 0 LIMIT 30", [`${categoriaElegida}%`]);
-                    
                     if (resProductos.rows.length > 0) {
                         const nombreCategoriaReal = resProductos.rows[0].categoria;
                         const productItems = resProductos.rows.map(p => ({ product_retailer_id: p.id_producto }));
-                        
                         const dataListaProductos = {
                             messaging_product: "whatsapp",
                             recipient_type: "individual",
@@ -423,7 +443,6 @@ const recibirMensaje = async (req, res) => {
                             }
                         };
                         await axios.post(`https://graph.facebook.com/v17.0/${process.env.WHATSAPP_PHONE_ID}/messages`, dataBotonVolver, { headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` } });
-
                     } else {
                         await enviarMensaje(numeroCliente, "No hay stock disponible en esta góndola por el momento.");
                     }
@@ -431,6 +450,48 @@ const recibirMensaje = async (req, res) => {
                     console.error("Error enviando productos de categoría:", errorCatalogo.response?.data || errorCatalogo.message);
                 }
                 return res.sendStatus(200); 
+            }
+
+            if (opcion === 'entrega_domicilio') {
+                if (!pedidosEsperandoDireccion.has(numeroCliente)) return await enviarMensaje(numeroCliente, "La sesión expiró, por favor reenviá tu carrito.");
+                await enviarMensaje(numeroCliente, "¡Perfecto! 🚚\n\nPara el envío, podés hacer dos cosas:\n1️⃣ *Escribirnos tu dirección* (Ej: Belgrano 1024)\n2️⃣ Tocar el 📎 (clip) abajo y enviarnos tu *Ubicación actual* de WhatsApp para mayor precisión.");
+                return res.sendStatus(200);
+            }
+
+            if (opcion === 'retiro_deposito') {
+                const datosPedido = pedidosEsperandoDireccion.get(numeroCliente);
+                if (!datosPedido) return await enviarMensaje(numeroCliente, "La sesión expiró, por favor reenviá tu carrito.");
+
+                await pool.query('UPDATE pedidos SET direccion = $1, estado = $2 WHERE id_pedido = $3', ['Retiro en depósito (Mitre 1044)', 'Pendiente - Retiro', datosPedido.idPedido]);
+                
+                pedidosEsperandoDireccion.delete(numeroCliente);
+                pedidosEsperandoPago.set(numeroCliente, datosPedido.idPedido);
+
+                const dataMenuPago = {
+                    messaging_product: "whatsapp",
+                    to: numeroCliente,
+                    type: "interactive",
+                    interactive: {
+                        type: "list",
+                        header: { type: "text", text: "Métodos de Pago" },
+                        body: { text: `¡Buenísimo! Vas a retirar por Mitre 1044. 🏪\n\nEl total de tu pedido es *$${datosPedido.total}*.\n\nElegí cómo preferís abonarlo:` },
+                        footer: { text: "Supercompra" },
+                        action: {
+                            button: "Elegir pago",
+                            sections: [
+                                {
+                                    title: "Opciones disponibles",
+                                    rows: [
+                                        { id: "pago_transferencia", title: "Transferencia", description: "Por Alias o CBU" },
+                                        { id: "pago_efectivo", title: "Efectivo", description: "Pagás al retirar o recibir" }
+                                    ]
+                                }
+                            ]
+                        }
+                    }
+                };
+                await axios.post(`https://graph.facebook.com/v17.0/${process.env.WHATSAPP_PHONE_ID}/messages`, dataMenuPago, { headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` } });
+                return res.sendStatus(200);
             }
 
             if (opcion === 'entrega_manana' || opcion === 'entrega_tarde' || opcion === 'envio_full') {
@@ -443,15 +504,11 @@ const recibirMensaje = async (req, res) => {
                 let nuevoEstado = '';
                 let recargoExtra = 0;
 
-                if (opcion === 'entrega_manana') {
-                    nuevoEstado = 'Pendiente - Mañana';
-                } else if (opcion === 'entrega_tarde') {
-                    nuevoEstado = 'Pendiente - Tarde';
-                } else if (opcion === 'envio_full') {
+                if (opcion === 'entrega_manana') nuevoEstado = 'Pendiente - Mañana';
+                else if (opcion === 'entrega_tarde') nuevoEstado = 'Pendiente - Tarde';
+                else if (opcion === 'envio_full') {
                     nuevoEstado = 'Pendiente - Full';
-                    if (subtotalActual < MINIMO_ENVIO_GRATIS) {
-                        recargoExtra = COSTO_FULL; 
-                    }
+                    if (subtotalActual < MINIMO_ENVIO_GRATIS) recargoExtra = COSTO_FULL; 
                 }
 
                 if (recargoExtra > 0) {
@@ -482,7 +539,7 @@ const recibirMensaje = async (req, res) => {
                                     title: "Opciones disponibles",
                                     rows: [
                                         { id: "pago_transferencia", title: "Transferencia", description: "Por Alias o CBU" },
-                                        { id: "pago_efectivo", title: "Efectivo", description: "Pagás al recibir" }
+                                        { id: "pago_efectivo", title: "Efectivo", description: "Pagás al retirar o recibir" }
                                     ]
                                 }
                             ]
@@ -514,7 +571,7 @@ const recibirMensaje = async (req, res) => {
                     await pool.query(`INSERT INTO pagos (id_pedido, metodo, estado, monto) VALUES ($1, $2, $3, $4)`, [idPedidoAsociado, 'Efectivo', 'A Cobrar (Efectivo)', totalCompra]);
                     await pool.query('UPDATE pedidos SET estado = $1 WHERE id_pedido = $2', ['En Preparación', idPedidoAsociado]);
                     pedidosEsperandoPago.delete(numeroCliente);
-                    await enviarMensaje(numeroCliente, `💵 Pedido registrado para pagar en efectivo al recibir ($${totalCompra}). ¡Ya lo estamos armando!`);
+                    await enviarMensaje(numeroCliente, `💵 Pedido registrado para pagar en efectivo ($${totalCompra}). ¡Ya lo estamos armando!`);
                     await dispararEnvioFactura(idPedidoAsociado, numeroCliente);
                 }
                 return res.sendStatus(200);
@@ -569,4 +626,28 @@ const difundirPromo = async (req, res) => {
     }
 };
 
-module.exports = { verificarToken, recibirMensaje, difundirPromo };
+// --- FUNCIÓN PARA NOTIFICAR QUE EL PEDIDO ESTÁ LISTO ---
+const notificarPedidoListo = async (req, res) => {
+    try {
+        const { id_pedido } = req.body;
+        if (!id_pedido) return res.status(400).json({ success: false, error: "Falta el ID del pedido" });
+
+        const resPedido = await pool.query("SELECT whatsapp_id, direccion FROM pedidos WHERE id_pedido = $1", [id_pedido]);
+        if (resPedido.rows.length === 0) return res.status(404).json({ success: false, error: "Pedido no encontrado." });
+
+        const { whatsapp_id, direccion } = resPedido.rows[0];
+
+        if (direccion && direccion.includes('Mitre 1044')) {
+            await enviarMensaje(whatsapp_id, "✅ ¡Hola! Tu pedido ya está armado y listo para retirar. 📦\n\nTe esperamos por nuestro depósito en *Mitre 1044*.\n\n¡Gracias por elegir Supercompra!");
+        } else {
+            await enviarMensaje(whatsapp_id, "✅ ¡Hola! Tu pedido ya está armado y listo. 🚚💨\n\nEn el transcurso del turno que elegiste te lo estaremos llevando a tu domicilio.\n\n¡Gracias por elegir Supercompra!");
+        }
+
+        return res.json({ success: true, message: "Cliente notificado con éxito." });
+    } catch (error) {
+        console.error("Error notificando pedido listo:", error);
+        return res.status(500).json({ success: false, error: "Error al notificar al cliente." });
+    }
+};
+
+module.exports = { verificarToken, recibirMensaje, difundirPromo, notificarPedidoListo };
