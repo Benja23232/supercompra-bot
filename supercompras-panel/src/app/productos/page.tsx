@@ -5,10 +5,11 @@ import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link'; 
 
-// Categorías (extraídas de tu base de datos)
+// Categorías actualizadas y subdivididas
 const CATEGORIAS = [
   'Aceites y Vinagres',
-  'Almacén',
+  'Almacén - Básicos',
+  'Almacén - Frescos y Congelados',
   'Almacén y Varios',
   'Bebidas con Alcohol',
   'Bebidas Sin Alcohol',
@@ -16,7 +17,10 @@ const CATEGORIAS = [
   'Combos y Ofertas',
   'Condimentos en Sobre',
   'Conservas y frutas en almíbar',
-  'Cuidado Personal',
+  'Conservas y Legumbres',
+  'Cuidado Personal - Acondicionadores',
+  'Cuidado Personal - Jabones e Higiene',
+  'Cuidado Personal - Shampoos',
   'Fideos, Arroz y Harinas',
   'Galletitas Dulces',
   'Galletitas Saladas y Bizcochos',
@@ -36,11 +40,11 @@ const CATEGORIAS = [
   'Limpieza - Varios',
   'Papelería',
   'Repostería y Dulces',
-  'Salsas y Conservas',
+  'Salsas y Aderezos',
   'Yerba Mate',
 ];
 
-// Rubros (extraídos de tu base de datos)
+// Rubros principales
 const RUBROS = [
   'Almacén y Conservas',
   'Bebidas e Infusiones',
@@ -84,8 +88,8 @@ export default function Productos() {
   const [formStock, setFormStock] = useState<number | ''>('');
   const [formArchivo, setFormArchivo] = useState<File | null>(null);
   const [formVencimiento, setFormVencimiento] = useState(''); 
-  const [formCategoria, setFormCategoria] = useState('Almacén y Varios');
-  const [formRubro, setFormRubro] = useState('');
+  const [formCategoria, setFormCategoria] = useState('Almacén - Básicos');
+  const [formRubro, setFormRubro] = useState('Almacén y Conservas');
 
   // Formulario Combos/Promos
   const [mostrarFormCombo, setMostrarFormCombo] = useState(false);
@@ -283,7 +287,7 @@ export default function Productos() {
       alert(`✅ "${nombreCreado}" se creó correctamente`);
     }
 
-    setFormNombre(''); setFormPrecio(''); setFormStock(''); setFormVencimiento(''); setFormArchivo(null); setFormCategoria('Almacén y Varios'); setFormRubro('');
+    setFormNombre(''); setFormPrecio(''); setFormStock(''); setFormVencimiento(''); setFormArchivo(null); setFormCategoria('Almacén - Básicos'); setFormRubro('Almacén y Conservas');
     setMostrarFormulario(false); fetchProductos(false); setSubiendo(false);
   };
 
