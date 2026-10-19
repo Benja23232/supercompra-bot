@@ -94,9 +94,6 @@ export default function Productos() {
   const [cantidadSeleccionada, setCantidadSeleccionada] = useState<number>(1);
 
   async function fetchProductos(mostrarCarga = true) {
-    // mostrarCarga=false: refresco silencioso (después de guardar algo),
-    // así la tabla no desaparece de golpe con el "Cargando..." y no
-    // parece que la página se hubiera recargado.
     if (mostrarCarga) setLoading(true);
     const { data, error } = await supabase
       .from('productos')
@@ -222,6 +219,22 @@ export default function Productos() {
     }
   };
 
+  const eliminarProducto = async (prod: any) => {
+    if (!confirm(`⚠️ ¿Estás seguro de ELIMINAR permanentemente "${prod.nombre}"?\nEsta acción borra el producto del sistema y del catálogo de WhatsApp.`)) return;
+
+    const res = await fetch(`/api/productos?id_producto=${prod.id_producto}`, {
+      method: 'DELETE'
+    });
+
+    const data = await res.json();
+    if (res.ok && data.success) {
+      alert(`🗑️ "${prod.nombre}" fue eliminado correctamente.`);
+      fetchProductos(false);
+    } else {
+      alert(`Error al eliminar: ${data.error || 'No se pudo eliminar el producto'}`);
+    }
+  };
+
   const activarCargaLote = (id: string) => { setLoteProductoId(id); setLoteCant(''); setLoteFecha(''); };
   
   const guardarNuevoLote = async (id: string) => {
@@ -339,8 +352,6 @@ export default function Productos() {
 
   return (
     <main className="contenedor-pagina">
-      {/* Saca las flechitas de subir/bajar de los inputs numéricos de precio,
-          así con 4+ dígitos (ej. 5000.00) se ve el número completo */}
       <style>{`
         .input-precio::-webkit-outer-spin-button,
         .input-precio::-webkit-inner-spin-button {
@@ -367,7 +378,6 @@ export default function Productos() {
             width: 100%;
           }
 
-          /* El form de alta: cada campo ocupa todo el ancho, uno debajo del otro */
           .formulario-nuevo {
             flex-direction: column !important;
           }
@@ -382,8 +392,6 @@ export default function Productos() {
             box-sizing: border-box;
           }
 
-          /* La tabla de productos no entra en la pantalla: la dejamos
-             scrollear horizontal en vez de aplastar las columnas */
           .contenedor-tabla {
             overflow-x: auto;
             -webkit-overflow-scrolling: touch;
@@ -547,7 +555,6 @@ export default function Productos() {
 
       {loading ? <p className="texto-cargando">Cargando...</p> : (
         <div className="contenedor-tabla">
-          {/* table-layout fijo + colgroup: así las columnas no se corren de ancho al pasar a modo edición */}
           <table className="tabla-datos" style={{ fontSize: '0.95rem', tableLayout: 'fixed', width: '100%' }}>
             <colgroup>
               <col style={{ width: '26%' }} />
@@ -679,8 +686,6 @@ export default function Productos() {
                       {esCombo ? <span className="badge badge-verde">Promo</span> : <span className={prod.stock_fisico > 0 ? 'badge badge-verde' : 'badge badge-rojo'}>{prod.stock_fisico} u.</span>}
                     </td>
                     
-                    {/* Acciones: columna de ancho fijo (ver colgroup) y botones apilados en columna
-                        en vez de en fila, así nunca empujan ni corren el resto de la tabla */}
                     <td className="texto-centro" style={{ padding: '10px 8px' }}>
                       {!esEditando && !esAgregandoLote && (
                         <div style={{display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'stretch'}}>
@@ -688,6 +693,9 @@ export default function Productos() {
                            <button onClick={() => activarEdicion(prod)} className="btn-chico btn-secundario" style={{ fontSize: '0.8rem', padding: '5px 8px', width: '100%', boxSizing: 'border-box' }}>✏️ Editar</button>
                            <button onClick={() => toggleActivo(prod)} className="btn-chico" style={{ fontSize: '0.8rem', padding: '5px 8px', width: '100%', boxSizing: 'border-box', backgroundColor: estaOculto ? '#16a34a' : '#ca8a04', color: '#fff' }}>
                              {estaOculto ? '👁️ Mostrar' : '🙈 Ocultar'}
+                           </button>
+                           <button onClick={() => eliminarProducto(prod)} className="btn-chico btn-peligro" style={{ fontSize: '0.8rem', padding: '5px 8px', width: '100%', boxSizing: 'border-box' }}>
+                             🗑️ Eliminar
                            </button>
                         </div>
                       )}

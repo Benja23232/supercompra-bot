@@ -3,14 +3,12 @@ import { supabase } from '@/lib/supabase';
 
 export async function POST(request: Request) {
   try {
-    // Se extrae también el 'rubro' del cuerpo de la petición
     const { nombre, precio, stock_fisico, image_url, fecha_vencimiento, categoria, rubro } = await request.json();
 
     if (!nombre || precio === undefined || stock_fisico === undefined) {
       return NextResponse.json({ success: false, error: 'Faltan datos obligatorios' }, { status: 400 });
     }
 
-    // Se agrega el campo rubro a la inserción
     const { data: productoCreado, error } = await supabase
       .from('productos')
       .insert([{ 
@@ -65,14 +63,12 @@ export async function POST(request: Request) {
 // Método PUT para editar nombre, precio, foto, categoría, rubro o cambiar visibilidad
 export async function PUT(request: Request) {
   try {
-    // Se extraen 'categoria' y 'rubro' para que también se puedan editar
     const { id_producto, nombre, precio, activo, image_url, categoria, rubro } = await request.json(); 
 
     if (!id_producto) {
       return NextResponse.json({ success: false, error: 'Falta ID' }, { status: 400 });
     }
 
-    // 1. Actualizamos Supabase con los campos enviados
     const updateData: any = {};
     if (nombre !== undefined) updateData.nombre = nombre.trim();
     if (precio !== undefined) updateData.precio = Number(precio);
@@ -89,7 +85,6 @@ export async function PUT(request: Request) {
 
     if (error) throw new Error(error.message);
 
-    // 2. Sincronizar estado y foto con WhatsApp
     const catalogId = process.env.META_CATALOG_ID;
     const accessToken = process.env.META_ACCESS_TOKEN;
 
@@ -103,19 +98,65 @@ export async function PUT(request: Request) {
         availability: activo === false ? 'out of stock' : (prodActualizado.stock_fisico > 0 || prodActualizado.tipo === 'combo' ? 'in stock' : 'out of stock')
       };
 
-      // Si desde el frontend nos mandan una imagen nueva, la agregamos al payload de Meta
       if (image_url && image_url.trim() !== '') {
         bodyMeta.image_url = image_url.trim();
       }
 
       await fetch(`https://graph.facebook.com/v19.0/${catalogId}/products`, {
-        method: 'POST', // Meta usa POST para actualizar si el retailer_id ya existe
+        method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` },
         body: JSON.stringify(bodyMeta)
       });
     }
 
     return NextResponse.json({ success: true, producto: prodActualizado });
+  } catch (err: any) {
+    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+  }
+}
+
+// Método DELETE para eliminar un producto
+export async function DELETE(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    let id_producto = searchParams.get('id_producto');
+
+    if (!id_producto) {
+      const body = await request.json().catch(() => ({}));
+      id_producto = body.id_producto;
+    }
+
+    if (!id_producto) {
+      return NextResponse.json({ success: false, error: 'Falta el ID del producto' }, { status: 400 });
+    }
+
+    // 1. Eliminar lotes asociados en Supabase
+    await supabase.from('lotes').delete().eq('id_producto', id_producto);
+
+    // 2. Eliminar el producto de Supabase
+    const { error } = await supabase
+      .from('productos')
+      .delete()
+      .eq('id_producto', id_producto);
+
+    if (error) throw new Error(error.message);
+
+    // 3. Eliminar del catálogo de Meta / WhatsApp
+    const catalogId = process.env.META_CATALOG_ID;
+    const accessToken = process.env.META_ACCESS_TOKEN;
+
+    if (catalogId && accessToken) {
+      try {
+        await fetch(`https://graph.facebook.com/v19.0/${catalogId}/products?retailer_id=${id_producto}`, {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${accessToken}` }
+        });
+      } catch (errMeta) {
+        console.error('Error al eliminar producto de Meta:', errMeta);
+      }
+    }
+
+    return NextResponse.json({ success: true });
   } catch (err: any) {
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }
