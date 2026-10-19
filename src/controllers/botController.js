@@ -369,11 +369,11 @@ const recibirMensaje = async (req, res) => {
                     type: "interactive",
                     interactive: {
                         type: "button",
-                        body: { text: "🛒 ¡Recibimos tu pedido y verificamos stock!\n\n¿Cómo preferís recibirlo?" },
+                        body: { text: "🛒 ¡Recibimos tu pedido y verificamos stock!\n\n¿Cómo preferís recibirlo?\n\n🚚 *Envío a Domicilio*\n🏪 *Retiro en Depósito (Mitre 1044)*" },
                         action: {
                             buttons: [
-                                { type: "reply", reply: { id: "entrega_domicilio", title: "🚚 Envío a Domicilio" } },
-                                { type: "reply", reply: { id: "retiro_deposito", title: "🏪 Retiro en Mitre" } }
+                                { type: "reply", reply: { id: "entrega_domicilio", title: "🚚 A Domicilio" } },
+                                { type: "reply", reply: { id: "retiro_deposito", title: "🏪 Retiro Depósito" } }
                             ]
                         }
                     }
@@ -474,7 +474,7 @@ const recibirMensaje = async (req, res) => {
                     interactive: {
                         type: "list",
                         header: { type: "text", text: "Métodos de Pago" },
-                        body: { text: `¡Buenísimo! Vas a retirar por Mitre 1044. 🏪\n\nEl total de tu pedido es *$${datosPedido.total}*.\n\nElegí cómo preferís abonarlo:` },
+                        body: { text: `¡Buenísimo! Vas a retirar por nuestro depósito en *Mitre 1044*. 🏪\n\nEl total de tu pedido es *$${datosPedido.total}*.\n\nElegí cómo preferís abonarlo:` },
                         footer: { text: "Supercompra" },
                         action: {
                             button: "Elegir pago",
