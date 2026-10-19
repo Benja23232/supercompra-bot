@@ -231,7 +231,7 @@ const recibirMensaje = async (req, res) => {
                 return res.sendStatus(200); 
             }
 
-            // NUEVO: Detectar si el mensaje viene del link de una promo
+            // Detección de link de promos
             if (textoRecibido.toLowerCase().includes('quiero pedir la promo:')) {
                 const nombrePromoBuscada = textoRecibido.split(':')[1]?.replace(/\*/g, '').trim() || '';
                 
@@ -240,7 +240,7 @@ const recibirMensaje = async (req, res) => {
                     
                     if (resPromo.rows.length > 0) {
                         const promo = resPromo.rows[0];
-                        await enviarMensaje(numeroCliente, `✨ ¡Encontré la promo que buscás!\n\n*${promo.nombre}*\n💰 Precio: *$${promo.precio}*\n\nPara pedirla y sumarla a tu carrito, podés explorar nuestro catálogo interactivo o consultarnos.`);
+                        await enviarMensaje(numeroCliente, `✨ ¡Encontré la promo que buscás!\n\n*${promo.nombre}*\n💰 Precio: *$${promo.precio}*\n\nPara pedirla y sumarla a tu carrito, podés explorar nuestro catálogo interactivo.`);
                     } else {
                         await enviarMensaje(numeroCliente, `¡Hola! Vi que querés consultar por una promo. Acá te comparto nuestros rubros disponibles para que elijas lo que más te guste:`);
                     }
@@ -528,4 +528,45 @@ const recibirMensaje = async (req, res) => {
     }
 };
 
-module.exports = { verificarToken, recibirMensaje };
+// --- FUNCIÓN DE DIFUSIÓN MASIVA DE PROMOS ---
+const difundirPromo = async (req, res) => {
+    try {
+        const { mensajePromo } = req.body;
+        if (!mensajePromo) {
+            return res.status(400).json({ success: false, error: "Falta el mensaje de la promo" });
+        }
+
+        const resClientes = await pool.query("SELECT DISTINCT whatsapp_id FROM clientes");
+        const clientes = resClientes.rows;
+
+        if (clientes.length === 0) {
+            return res.status(404).json({ success: false, error: "No hay clientes registrados en la base de datos." });
+        }
+
+        let enviados = 0;
+        let errores = 0;
+
+        for (let cliente of clientes) {
+            let numero = cliente.whatsapp_id;
+            try {
+                await enviarMensaje(numero, mensajePromo);
+                enviados++;
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            } catch (errEnvio) {
+                console.error(`Error enviando difusión a ${numero}:`, errEnvio.response?.data || errEnvio.message);
+                errores++;
+            }
+        }
+
+        return res.json({ 
+            success: true, 
+            message: `Difusión finalizada. Enviados: ${enviados}, Errores: ${errores}` 
+        });
+
+    } catch (error) {
+        console.error("Error en difusión masiva:", error);
+        return res.status(500).json({ success: false, error: "Error interno en el servidor al realizar la difusión." });
+    }
+};
+
+module.exports = { verificarToken, recibirMensaje, difundirPromo };

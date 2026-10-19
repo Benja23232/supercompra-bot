@@ -576,21 +576,49 @@ export default function Productos() {
                         <div style={{display: 'flex', flexDirection: 'column', gap: '6px'}}>
                            {!esCombo && <button onClick={() => activarCargaLote(prod.id_producto)} className="btn-chico btn-primario" style={{ fontSize: '0.8rem', width: '100%' }}>+ Lote</button>}
                            
-                           {/* NUEVO: Botón para copiar link de redes en los combos */}
                            {esCombo && (
-                             <button 
-                               onClick={() => {
-                                 const textoMensaje = encodeURIComponent(`¡Hola! 👋 Quiero pedir la promo: *${prod.nombre}*`);
-                                 const numeroWhatsAppBot = "5492392480035"; // Reemplazá con tu número
-                                 const linkWa = `https://wa.me/${numeroWhatsAppBot}?text=${textoMensaje}`;
-                                 navigator.clipboard.writeText(linkWa);
-                                 alert(`✅ ¡Link copiado al portapapeles para "${prod.nombre}"!\n\nYa podés pegarlo en tus estados o redes.`);
-                               }} 
-                               className="btn-chico" 
-                               style={{ fontSize: '0.8rem', width: '100%', backgroundColor: '#059669', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', padding: '5px' }}
-                             >
-                               🔗 Copiar Link
-                             </button>
+                             <>
+                               <button 
+                                 onClick={() => {
+                                   const textoMensaje = encodeURIComponent(`¡Hola! 👋 Quiero pedir la promo: *${prod.nombre}*`);
+                                   const numeroWhatsAppBot = "5492392480035"; 
+                                   const linkWa = `https://wa.me/${numeroWhatsAppBot}?text=${textoMensaje}`;
+                                   navigator.clipboard.writeText(linkWa);
+                                   alert(`✅ ¡Link copiado al portapapeles para "${prod.nombre}"!`);
+                                 }} 
+                                 className="btn-chico" 
+                                 style={{ fontSize: '0.8rem', width: '100%', backgroundColor: '#059669', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', padding: '5px' }}
+                               >
+                                 🔗 Copiar Link
+                               </button>
+
+                               <button 
+                                 onClick={async () => {
+                                   if (!confirm(`⚠️ ¿Estás seguro de enviar esta promo a TODOS los clientes de la base de datos?\n\nPromo: "${prod.nombre}"`)) return;
+                                   
+                                   const mensajePromo = `✨ *¡NUEVA PROMO DISPONIBLE!* ✨\n\n*${prod.nombre}*\n💰 Precio: *$${prod.precio}*\n\n¡No te la pierdas! Hacé clic en el siguiente enlace para pedirla al instante:\nhttps://wa.me/5492392480035?text=${encodeURIComponent(`¡Hola! 👋 Quiero pedir la promo: *${prod.nombre}*`)}`;
+                                   
+                                   alert("Enviando difusión... Esto puede tardar unos segundos según la cantidad de clientes.");
+                                   
+                                   const res = await fetch('/api/difusion', {
+                                     method: 'POST',
+                                     headers: { 'Content-Type': 'application/json' },
+                                     body: JSON.stringify({ mensajePromo })
+                                   });
+                                   const data = await res.json();
+                                   
+                                   if (data.success) {
+                                     alert(`✅ ¡Difusión completada con éxito!\n${data.message}`);
+                                   } else {
+                                     alert(`❌ Error: ${data.error}`);
+                                   }
+                                 }} 
+                                 className="btn-chico" 
+                                 style={{ fontSize: '0.8rem', width: '100%', backgroundColor: '#7c3aed', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', padding: '5px' }}
+                               >
+                                 📢 Enviar a Todos
+                               </button>
+                             </>
                            )}
 
                            <button onClick={() => activarEdicion(prod)} className="btn-chico btn-secundario" style={{ fontSize: '0.8rem', width: '100%' }}>✏️ Editar</button>
