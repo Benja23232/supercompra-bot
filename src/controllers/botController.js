@@ -19,12 +19,12 @@ const MINIMO_ENVIO_GRATIS = 40000;
 
 async function enviarMenuRubros(numeroCliente) {
     try {
-        const resRubros = await pool.query("SELECT DISTINCT rubro FROM productos WHERE stock_fisico > 0 AND rubro IS NOT NULL ORDER BY rubro ASC");
+        const resRubros = await pool.query("SELECT DISTINCT rubro FROM productos WHERE stock_fisico > 0 AND rubro IS NOT NULL AND TRIM(rubro) <> '' ORDER BY rubro ASC");
         
         if (resRubros.rows.length > 0) {
             const rowsRubros = resRubros.rows.map(row => ({
-                id: `rubro_${row.rubro.substring(0, 20)}`, 
-                title: row.rubro.substring(0, 24) 
+                id: `rubro_${row.rubro.trim().substring(0, 20)}`, 
+                title: row.rubro.trim().substring(0, 24) 
             }));
 
             const dataMenuRubros = {
@@ -33,14 +33,14 @@ async function enviarMenuRubros(numeroCliente) {
                 type: "interactive",
                 interactive: {
                     type: "list",
-                    header: { type: "text", text: "Supercompra" }, // Sin emoji para que Meta lo acepte
+                    header: { type: "text", text: "Supercompra" }, // Sin emoji para cumplir con Meta
                     body: { text: "¡Hola! 👋 Bienvenido a nuestro súper.\n\n⚠️ *AVISO IMPORTANTE:* Los pedidos realizados desde el viernes por la tarde y durante el fin de semana se despacharán a partir del día lunes.\n\nDesplegá el menú de abajo para ver nuestros rubros." },
                     footer: { text: "Navegá por nuestro catálogo" },
                     action: {
                         button: "Ver Rubros",
                         sections: [{
                             title: "Rubros Principales",
-                            rows: rowsRubros.slice(0, 30)
+                            rows: rowsRubros.slice(0, 10) // Límite máximo de 10 permitido por Meta para listas
                         }]
                     }
                 }
@@ -50,18 +50,19 @@ async function enviarMenuRubros(numeroCliente) {
              await enviarMensaje(numeroCliente, "¡Hola! 👋 Bienvenido a Supercompra.\n\nEn este momento estamos reponiendo stock. ¡Volvé a consultarnos más tarde!");
         }
     } catch (error) {
-        console.error("Error armando menú de rubros:", error);
+        console.error("Error armando menú de rubros:", error.response?.data || error.message);
+        await enviarMensaje(numeroCliente, "¡Hola! 👋 Bienvenido a Supercompra.\n\nEn este momento estamos reponiendo stock. ¡Volvé a consultarnos más tarde!");
     }
 }
 
 async function enviarMenuCategorias(numeroCliente, rubro) {
     try {
-        const resCategorias = await pool.query("SELECT DISTINCT categoria FROM productos WHERE rubro ILIKE $1 AND stock_fisico > 0 ORDER BY categoria ASC", [`${rubro}%`]);
+        const resCategorias = await pool.query("SELECT DISTINCT categoria FROM productos WHERE rubro ILIKE $1 AND stock_fisico > 0 AND categoria IS NOT NULL AND TRIM(categoria) <> '' ORDER BY categoria ASC", [`${rubro}%`]);
         
         if (resCategorias.rows.length > 0) {
             const rowsCategorias = resCategorias.rows.map(row => ({
-                id: `cat_${row.categoria.substring(0, 20)}`, 
-                title: row.categoria.substring(0, 24) 
+                id: `cat_${row.categoria.trim().substring(0, 20)}`, 
+                title: row.categoria.trim().substring(0, 24) 
             }));
 
             const dataMenuCategorias = {
@@ -75,7 +76,7 @@ async function enviarMenuCategorias(numeroCliente, rubro) {
                         button: "Ver Góndolas",
                         sections: [{
                             title: "Góndolas Disponibles",
-                            rows: rowsCategorias.slice(0, 30)
+                            rows: rowsCategorias.slice(0, 10)
                         }]
                     }
                 }
@@ -85,7 +86,7 @@ async function enviarMenuCategorias(numeroCliente, rubro) {
             await enviarMensaje(numeroCliente, "No hay stock en este rubro por el momento.");
         }
     } catch (error) {
-        console.error("Error armando menú de categorías:", error);
+        console.error("Error armando menú de categorías:", error.response?.data || error.message);
     }
 }
 
@@ -231,6 +232,7 @@ const recibirMensaje = async (req, res) => {
             }
 
             await enviarMenuRubros(numeroCliente);
+            return res.sendStatus(200);
         }
 
         // --- 3. MANEJO DE IMÁGENES (OCR) ---
@@ -337,6 +339,7 @@ const recibirMensaje = async (req, res) => {
             } catch (errorBD) {
                 console.error("Error BD Carrito:", errorBD);
             }
+            return res.sendStatus(200);
         }
 
         // --- 5. CAPTURA DE BOTONES Y LISTAS INTERACTIVAS ---
@@ -371,7 +374,7 @@ const recibirMensaje = async (req, res) => {
                             type: "interactive",
                             interactive: {
                                 type: "product_list",
-                                header: { type: "text", text: `Góndola: ${nombreCategoriaReal.substring(0, 45)}` }, // Sin emoji
+                                header: { type: "text", text: `Góndola: ${nombreCategoriaReal.substring(0, 45)}` },
                                 body: { text: `Explorá los productos y sumalos a tu carrito.` },
                                 action: {
                                     catalog_id: "2194379468072114",
@@ -404,7 +407,7 @@ const recibirMensaje = async (req, res) => {
                         await enviarMensaje(numeroCliente, "No hay stock disponible en esta góndola por el momento.");
                     }
                 } catch (errorCatalogo) {
-                    console.error("Error enviando productos de categoría:", errorCatalogo);
+                    console.error("Error enviando productos de categoría:", errorCatalogo.response?.data || errorCatalogo.message);
                 }
                 return res.sendStatus(200); 
             }
@@ -448,7 +451,7 @@ const recibirMensaje = async (req, res) => {
                     type: "interactive",
                     interactive: {
                         type: "list",
-                        header: { type: "text", text: "Métodos de Pago" }, // Sin emoji
+                        header: { type: "text", text: "Métodos de Pago" },
                         body: { text: `Turno agendado. El total de tu pedido es *$${totalActualizado}*.\n\nElegí cómo preferís abonarlo:` },
                         footer: { text: "Supercompra" },
                         action: {
@@ -468,6 +471,7 @@ const recibirMensaje = async (req, res) => {
                     }
                 };
                 await axios.post(`https://graph.facebook.com/v17.0/${process.env.WHATSAPP_PHONE_ID}/messages`, dataMenuPago, { headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` } });
+                return res.sendStatus(200);
             }
 
             if (opcion === 'pago_transferencia' || opcion === 'pago_cuenta_dni' || opcion === 'pago_efectivo' || opcion === 'pago_tarjeta_pampa') {
@@ -503,6 +507,7 @@ const recibirMensaje = async (req, res) => {
                     await enviarMensaje(numeroCliente, `💵 Pedido registrado para pagar en efectivo al recibir ($${totalCompra}). ¡Ya lo estamos armando!`);
                     await dispararEnvioFactura(idPedidoAsociado, numeroCliente);
                 }
+                return res.sendStatus(200);
             }
         }
         
