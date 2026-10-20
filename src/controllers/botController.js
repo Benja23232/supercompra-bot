@@ -275,9 +275,9 @@ const recibirMensaje = async (req, res) => {
 
                     const pagoValidado = 
                         text.includes(String(datosPago.totalEsperado)) || 
-                        textoLimpiado.includes(montoEnteroStr) ||        
+                        textoLimpiado.includes(montoEnteroStr) ||       
                         textoLimpiado.includes(montoConPuntoMiles) ||    
-                        textoLimpiado.includes(montoConComaMiles);       
+                        textoLimpiado.includes(montoConComaMiles);      
                     
                     if (pagoValidado) {
                         await pool.query('UPDATE pagos SET estado = $1 WHERE id_pedido = $2', ['Aprobado', datosPago.idPedido]);
@@ -404,7 +404,7 @@ const recibirMensaje = async (req, res) => {
             if (opcion.startsWith('cat_')) {
                 const categoriaElegida = opcion.replace('cat_', '');
 
-                // 🍷 FILTRO EXCLUSIVO PARA BEBIDAS CON ALCOHOL (ENVÍA FLYER + WEB)
+                // 🍷 FILTRO EXCLUSIVO PARA BEBIDAS CON ALCOHOL (DERIVA AL SEGUNDO NÚMERO Y WEB)
                 if (categoriaElegida.toLowerCase().includes('alcohol') || categoriaElegida.toLowerCase().includes('bebidas con alcohol')) {
                     
                     const dataImagenBebidas = {
@@ -417,8 +417,9 @@ const recibirMensaje = async (req, res) => {
                                      "¡Hola! Mirá nuestro catálogo visual de bebidas.\n\n" +
                                      "1️⃣ *Armá tu pedido online con stock en tiempo real:* \n" +
                                      "🔗 https://supercompra-bot.vercel.app/bebidas\n\n" +
-                                     "2️⃣ *O escribinos directo por WhatsApp con lo que querés:* \n" +
-                                     "👉 Respondemos a este chat de forma manual."
+                                     "2️⃣ *¿Preferís encargarlo directo por WhatsApp con un asesor?* \n" +
+                                     "👉 Hacé clic en el siguiente enlace para escribirle al segundo número:\n" +
+                                     "https://wa.me/5492392689864?text=¡Hola!%20Quiero%20pedir%20una%20bebida%20por%20acá"
                         }
                     };
 
