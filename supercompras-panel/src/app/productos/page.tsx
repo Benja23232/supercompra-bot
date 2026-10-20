@@ -69,10 +69,11 @@ export default function Productos() {
   // Estado para simular/recordar a cuáles les subimos foto en esta sesión
   const [fotosRecientes, setFotosRecientes] = useState<string[]>([]);
 
-  // Estados de edición general (Nombre, Precio, Foto, Categoría y Rubro)
+  // Estados de edición general (Nombre, Precio, Foto, Categoría, Rubro y STOCK)
   const [editandoId, setEditandoId] = useState<string | null>(null);
   const [editNombre, setEditNombre] = useState('');
   const [editPrecio, setEditPrecio] = useState<number>(0);
+  const [editStock, setEditStock] = useState<number>(0); // <--- NUEVO ESTADO PARA STOCK
   const [editArchivo, setEditArchivo] = useState<File | null>(null);
   const [editCategoria, setEditCategoria] = useState('');
   const [editRubro, setEditRubro] = useState('');
@@ -147,6 +148,7 @@ export default function Productos() {
     setEditandoId(prod.id_producto);
     setEditNombre(prod.nombre);
     setEditPrecio(prod.precio);
+    setEditStock(prod.stock_fisico || 0); // <--- AGREGAMOS STOCK AL ACTIVAR EDICIÓN
     setEditArchivo(null);
     setEditCategoria(prod.categoria || '');
     setEditRubro(prod.rubro || '');
@@ -174,9 +176,11 @@ export default function Productos() {
       id_producto: id, 
       nombre: editNombre, 
       precio: editPrecio,
+      stock_fisico: editStock, // <--- ENVIAMOS EL STOCK AL BACKEND
       categoria: editCategoria,
       rubro: editRubro
     };
+    
     if (imageUrl) {
       payload.image_url = imageUrl;
     }
@@ -568,7 +572,18 @@ export default function Productos() {
                     </td>
 
                     <td className="texto-centro" style={{ padding: '10px 12px' }}>
-                      {esCombo ? <span className="badge badge-verde">Promo</span> : <span className={prod.stock_fisico > 0 ? 'badge badge-verde' : 'badge badge-rojo'}>{prod.stock_fisico} u.</span>}
+                      {esEditando ? (
+                        // 👇 ACÁ ESTÁ EL NUEVO CAJÓN PARA EDITAR EL STOCK FÍSICO 👇
+                        <input 
+                          type="number" 
+                          value={editStock} 
+                          onChange={(e) => setEditStock(parseInt(e.target.value) || 0)} 
+                          className="input-tabla corto" 
+                          style={{ width: '100%' }}
+                        />
+                      ) : (
+                        esCombo ? <span className="badge badge-verde">Promo</span> : <span className={prod.stock_fisico > 0 ? 'badge badge-verde' : 'badge badge-rojo'}>{prod.stock_fisico} u.</span>
+                      )}
                     </td>
                     
                     <td className="texto-centro" style={{ padding: '10px 8px' }}>
