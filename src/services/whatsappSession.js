@@ -6,13 +6,11 @@ const path = require('path');
 async function iniciarSesionWhatsApp() {
     console.log("🚀 Iniciando conexión para el segundo número en la nube...");
 
-    // Creamos la carpeta auth_info_baileys si no existe en el servidor
     const authDir = path.join(__dirname, '../../auth_info_baileys');
     if (!fs.existsSync(authDir)) {
         fs.mkdirSync(authDir, { recursive: true });
     }
 
-    // Opcional: Si configuramos la variable de entorno con el creds.json, lo restauramos automáticamente en Render
     const credsPath = path.join(authDir, 'creds.json');
     if (process.env.WHATSAPP_CREDS && !fs.existsSync(credsPath)) {
         console.log("📥 Restaurando credenciales desde la variable de entorno de Render...");
@@ -42,11 +40,11 @@ async function iniciarSesionWhatsApp() {
                 setTimeout(() => iniciarSesionWhatsApp(), 10000);
             }
         } else if (connection === 'open') {
-            console.log('✅ ¡CONEXIÓN EXITOSA EN LA NUBE! El segundo número está activo.');
+            console.log('✅ ¡CONEXIÓN EXITOSA EN LA NUBE! El segundo número está activo y escuchando.');
         }
     });
 
-    // 👇 ESCUCHA DE MENSAJES ENTRANTES
+    // 👇 ESCUCHA DE MENSAJES ENTRANTES EN EL SEGUNDO NÚMERO
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
         if (type !== 'notify') return;
 
@@ -57,17 +55,17 @@ async function iniciarSesionWhatsApp() {
         const textoMensaje = msg.message.conversation || 
                              msg.message.extendedTextMessage?.text || '';
 
-        if (textoMensaje.toLowerCase().includes('quiero') || textoMensaje.toLowerCase().includes('bebida') || textoMensaje.toLowerCase().includes('hola')) {
-            
-            console.log(`📥 Enviando catálogo de bebidas al cliente: ${numeroRemitente}`);
+        console.log(`📥 Mensaje recibido de ${numeroRemitente}: "${textoMensaje}"`);
 
-            await sock.sendMessage(numeroRemitente, {
-                image: { url: "https://ntungxnymcijfxueucoz.supabase.co/storage/v1/object/public/catalogo/catalogo.jpeg" },
-                caption: "🍷 *Catálogo de Bebidas con Alcohol*\n\n" +
-                         "¡Hola! Acá tenés la imagen con todas las opciones y precios.\n\n" +
-                         "📲 Escribinos por acá mismo qué te querés llevar y te pasamos el total para coordinar la entrega. 📦"
-            });
-        }
+        // Responde a cualquier mensaje para asegurar que atienda al cliente de inmediato
+        await sock.sendMessage(numeroRemitente, {
+            image: { url: "https://ntungxnymcijfxueucoz.supabase.co/storage/v1/object/public/catalogo/catalogo.jpeg" },
+            caption: "🍷 *Catálogo de Bebidas con Alcohol*\n\n" +
+                     "¡Hola! Acá tenés la imagen con todas las opciones y precios.\n\n" +
+                     "📲 Escribinos por acá mismo qué te querés llevar y te pasamos el total para coordinar la entrega. 📦"
+        });
+        
+        console.log(`📤 Catálogo de bebidas enviado exitosamente a ${numeroRemitente}`);
     });
 
     return sock;
