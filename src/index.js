@@ -84,9 +84,12 @@ app.post('/mercadopago-webhook', async (req, res) => {
 });
 
 // 5. Obtener lista de productos para el panel web
+// 5. Obtener lista de productos para el panel web (Trayendo todos, con o sin stock)
 app.get('/api/productos', async (req, res) => {
     try {
-        const result = await pool.query("SELECT id_producto, nombre, precio FROM productos WHERE estado_catalogo = true"); 
+        const result = await pool.query(
+            "SELECT id_producto, nombre, precio, stock_fisico, categoria, image_url FROM productos WHERE estado_catalogo = true"
+        ); 
         res.json(result.rows);
     } catch (error) {
         console.error("❌ Error al obtener productos:", error);
