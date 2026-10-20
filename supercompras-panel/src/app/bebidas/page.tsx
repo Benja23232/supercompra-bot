@@ -132,6 +132,15 @@ const CSS = `
 .sc-bar button { padding: 14px 24px; border: none; border-radius: 12px; background: var(--gold); color: #fff; font-weight: 800; font-size: 1rem; cursor: pointer; transition: background 0.2s; }
 .sc-bar button:hover { background: #B07D1E; }
 
+/* Footer */
+.sc-footer { margin-top: 60px; padding: 32px 20px; background: #123F26; color: #CFE0D4; border-top: 1px solid rgba(230,240,205,0.1); text-align: center; }
+.sc-footer-in { max-width: 800px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; align-items: center; }
+.sc-footer p { margin: 0; font-size: .95rem; line-height: 1.5; }
+.sc-footer a { color: #F3D390; text-decoration: none; font-weight: 700; }
+.sc-footer a:hover { text-decoration: underline; }
+.sc-footer-brand { font-size: 1.1rem; font-weight: 800; color: #fff; }
+.sc-footer-brand b { color: var(--gold); }
+
 .sc button:focus-visible, .sc-add:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
 
 /* ---------------- MEDIAS QUERIES RESPONSIVAS ---------------- */
@@ -193,7 +202,6 @@ export default function CatalogoBebidas() {
 
   useEffect(() => {
     async function fetchBebidas() {
-      // Modificamos para traer todos los productos de la categoría independientemente del stock o de si estaban ocultos
       const { data } = await supabase
         .from('productos')
         .select('*')
@@ -276,7 +284,7 @@ export default function CatalogoBebidas() {
       await supabase.from('detalle_pedidos').insert(detalles);
 
       const msj = `¡Hola! Acabo de hacer un pedido de bebidas por la web. 🍷🍻\n*Mi número de pedido es: #${ped.id_pedido}*\nPor favor, confirmame cuando lo empiecen a preparar.`;
-      const urlWa = `https://wa.me/5492392480035?text=${encodeURIComponent(msj)}`;
+      const urlWa = `https://wa.me/5492392000000?text=${encodeURIComponent(msj)}`;
 
       window.location.href = urlWa;
 
@@ -412,7 +420,18 @@ export default function CatalogoBebidas() {
         )}
       </div>
 
-      {/* FOOTER FLOTANTE */}
+      {/* FOOTER */}
+      <footer className="sc-footer">
+        <div className="sc-footer-in">
+          <p className="sc-footer-brand">Super<b>compras</b></p>
+          <p>📍 Depósito: <b>Mitre 1044, Tres Lomas</b></p>
+          <p>📞 Contacto / WhatsApp: <a href="https://wa.me/5492392000000" target="_blank" rel="noopener noreferrer">+54 9 2392 00-0000</a></p>
+          <p>🔙 <a href="https://supercompra-bot.vercel.app">Volver al catálogo principal de Supercompra</a></p>
+          <p style={{ fontSize: '0.8rem', opacity: 0.7, marginTop: '4px' }}>© 2026 Supercompra. Todos los derechos reservados.</p>
+        </div>
+      </footer>
+
+      {/* BARRA FLOTANTE */}
       {total > 0 && (
         <div className="sc-bar">
           <div className="sc-bar-in">
