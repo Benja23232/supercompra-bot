@@ -419,7 +419,7 @@ const recibirMensaje = async (req, res) => {
                                      "🔗 https://supercompra-bot.vercel.app/bebidas\n\n" +
                                      "2️⃣ *¿Preferís encargarlo directo por WhatsApp con un asesor?* \n" +
                                      "👉 Hacé clic en el siguiente enlace para escribirle al segundo número:\n" +
-                                     "https://wa.me/5492392689864?text=¡Hola!%20Quiero%20pedir%20una%20bebida%20por%20acá"
+                                     "https://wa.me/542392689864?text=¡Hola!%20Quiero%20pedir%20una%20bebida%20por%20acá"
                         }
                     };
 
