@@ -275,9 +275,9 @@ const recibirMensaje = async (req, res) => {
 
                     const pagoValidado = 
                         text.includes(String(datosPago.totalEsperado)) || 
-                        textoLimpiado.includes(montoEnteroStr) ||         
-                        textoLimpiado.includes(montoConPuntoMiles) ||     
-                        textoLimpiado.includes(montoConComaMiles);        
+                        textoLimpiado.includes(montoEnteroStr) ||        
+                        textoLimpiado.includes(montoConPuntoMiles) ||    
+                        textoLimpiado.includes(montoConComaMiles);       
                     
                     if (pagoValidado) {
                         await pool.query('UPDATE pagos SET estado = $1 WHERE id_pedido = $2', ['Aprobado', datosPago.idPedido]);
@@ -404,16 +404,35 @@ const recibirMensaje = async (req, res) => {
             if (opcion.startsWith('cat_')) {
                 const categoriaElegida = opcion.replace('cat_', '');
 
-                // 🍷 FILTRO EXCLUSIVO PARA BEBIDAS CON ALCOHOL
+                // 🍷 FILTRO EXCLUSIVO PARA BEBIDAS CON ALCOHOL (ENVÍA FLYER + WEB)
                 if (categoriaElegida.toLowerCase().includes('alcohol') || categoriaElegida.toLowerCase().includes('bebidas con alcohol')) {
-                    const mensajeAlcohol = "🍷 *Catálogo y Pedidos de Bebidas*\n\n" +
-                        "¡Hola! Tenés dos formas de pedir tus bebidas:\n\n" +
-                        "1️⃣ *Armá tu pedido online con stock en tiempo real:* \n" +
-                        "🔗 https://supercompra-bot.vercel.app/bebidas\n\n" +
-                        "2️⃣ *Escribinos directo por WhatsApp con lo que querés:* \n" +
-                        "👉 https://wa.me/5492392000000?text=¡Hola!%20Quiero%20recibir%20el%20catálogo%20de%20bebidas%20para%20hacer%20un%20pedido";
+                    
+                    const dataImagenBebidas = {
+                        messaging_product: "whatsapp",
+                        to: numeroCliente,
+                        type: "image",
+                        image: {
+                            link: "https://ntungxnymcijfxueucoz.supabase.co/storage/v1/object/public/catalogo/catalogo.jpeg",
+                            caption: "🍷 *Catálogo de Bebidas con Alcohol*\n\n" +
+                                     "¡Hola! Mirá nuestro catálogo visual de bebidas.\n\n" +
+                                     "1️⃣ *Armá tu pedido online con stock en tiempo real:* \n" +
+                                     "🔗 https://supercompra-bot.vercel.app/bebidas\n\n" +
+                                     "2️⃣ *O escribinos directo por WhatsApp con lo que querés:* \n" +
+                                     "👉 Respondemos a este chat de forma manual."
+                        }
+                    };
 
-                    await enviarMensaje(numeroCliente, mensajeAlcohol);
+                    try {
+                        await axios.post(
+                            `https://graph.facebook.com/v17.0/${process.env.WHATSAPP_PHONE_ID}/messages`, 
+                            dataImagenBebidas, 
+                            { headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` } }
+                        );
+                    } catch (errorFlyer) {
+                        console.error("Error enviando flyer de bebidas:", errorFlyer.response?.data || errorFlyer.message);
+                        await enviarMensaje(numeroCliente, "🍷 *Catálogo de Bebidas*\n\nMirá nuestras bebidas online: https://supercompra-bot.vercel.app/bebidas");
+                    }
+
                     return res.sendStatus(200);
                 }
 
