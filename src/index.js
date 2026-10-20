@@ -4,9 +4,9 @@ const axios = require('axios'); // <-- Para enviar las plantillas a Meta
 require('dotenv').config();
 
 // 1. Enchufamos la base de datos y la función de mensajes
-// Asegurate de que el archivo en la carpeta 'services' se llame 'whatsapp.js' o ajustá el nombre acá si se llama distinto.
 const { pool } = require('./services/db');
 const { enviarMensaje } = require('./services/whatsapp');
+const { iniciarSesionWhatsApp } = require('./services/whatsappSession'); // 👈 Importamos la sesión del 2° número
 
 // 👇 ACÁ IMPORTAMOS LA NUEVA FUNCIÓN DEL BOT 👇
 const { notificarPedidoListo } = require('./controllers/botController');
@@ -178,7 +178,7 @@ app.post('/api/difusion', async (req, res) => {
     }
 });
 
-// 👇 7. ACÁ AGREGAMOS LA NUEVA RUTA PARA AVISAR QUE EL PEDIDO ESTÁ LISTO 👇
+// 👇 7. RUTA PARA AVISAR QUE EL PEDIDO ESTÁ LISTO 👇
 app.post('/api/notificar-pedido', notificarPedidoListo);
 
 // Ruta de prueba inicial
@@ -189,4 +189,7 @@ app.get('/', (req, res) => {
 // Arrancamos el servidor
 app.listen(PORT, () => {
     console.log(`🚀 Servidor central corriendo a la perfección en http://localhost:${PORT}`);
+    
+    // Encendemos el mini-bot del 2° número y generamos el QR en consola
+    iniciarSesionWhatsApp();
 });

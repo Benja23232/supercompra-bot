@@ -397,6 +397,20 @@ const recibirMensaje = async (req, res) => {
 
             if (opcion.startsWith('rubro_')) {
                 const rubroElegido = opcion.replace('rubro_', '');
+
+                // 🍷 DETECCIÓN DE BEBIDAS CON ALCOHOL
+                if (rubroElegido.toLowerCase().includes('alcohol') || rubroElegido.toLowerCase().includes('bebidas')) {
+                    const mensajeAlcohol = "🍷 *Catálogo y Pedidos de Bebidas*\n\n" +
+                        "¡Hola! Tenés dos formas de pedir tus bebidas:\n\n" +
+                        "1️⃣ *Armá tu pedido online con stock en tiempo real:* \n" +
+                        "🔗 https://supercompra-bot.vercel.app/bebidas\n\n" +
+                        "2️⃣ *Escribinos directo por WhatsApp con lo que querés:* \n" +
+                        "👉 https://wa.me/5492392000000?text=¡Hola!%20Quiero%20recibir%20el%20catálogo%20de%20bebidas%20para%20hacer%20un%20pedido";
+
+                    await enviarMensaje(numeroCliente, mensajeAlcohol);
+                    return res.sendStatus(200);
+                }
+
                 await enviarMenuCategorias(numeroCliente, rubroElegido);
                 return res.sendStatus(200);
             }
