@@ -6,7 +6,7 @@ const path = require('path');
 async function iniciarSesionWhatsApp() {
     console.log("🚀 Iniciando conexión para el segundo número en la nube...");
 
-    const authDir = path.join(__dirname, '../../auth_info_baileys');
+    const authDir = path.join(__dirname, '../auth_info_baileys');
     if (!fs.existsSync(authDir)) {
         fs.mkdirSync(authDir, { recursive: true });
     }
