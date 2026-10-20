@@ -84,12 +84,14 @@ const CSS = `
 .sc-card:hover { transform: translateY(-2px); box-shadow: 0 8px 16px rgba(0,0,0,0.05); }
 .sc-thumb { aspect-ratio: 1 / 1; background-color: #F1EBD8; background-size: cover; background-position: center; display: grid; place-items: center; font-size: 2.5rem; position: relative; }
 .sc-low { position: absolute; top: 10px; left: 10px; background: var(--gold-soft); color: #7A5612; font-size: .75rem; font-weight: 700; padding: 4px 10px; border-radius: 999px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+.sc-out { position: absolute; inset: 0; background: rgba(0,0,0,0.4); display: grid; place-items: center; color: #fff; font-weight: 800; font-size: .95rem; text-transform: uppercase; letter-spacing: .05em; }
 .sc-body { padding: 16px; display: flex; flex-direction: column; justify-content: space-between; flex-grow: 1; gap: 16px; }
 .sc-name { margin: 0; font-size: 1rem; font-weight: 700; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .sc-price { margin: 4px 0 0; font-size: 1.3rem; font-weight: 800; color: var(--green); }
 
 .sc-add { width: 100%; padding: 12px; border: none; border-radius: 12px; background: var(--green); color: #fff; font-weight: 700; font-size: .95rem; cursor: pointer; transition: background .15s; }
 .sc-add:hover { background: var(--green-deep); }
+.sc-add:disabled { background: #D1D8D3; color: #8A9990; cursor: not-allowed; }
 .sc-step { display: flex; align-items: center; justify-content: space-between; background: var(--gold-soft); border-radius: 12px; padding: 5px; }
 .sc-step button { width: 40px; height: 40px; border: none; border-radius: 9px; background: #fff; color: var(--green-deep); font-size: 1.4rem; font-weight: 700; cursor: pointer; line-height: 1; display: flex; align-items: center; justify-content: center; }
 .sc-step button:hover { background: var(--green); color: #fff; }
@@ -191,14 +193,14 @@ export default function CatalogoBebidas() {
 
   useEffect(() => {
     async function fetchBebidas() {
+      // Modificamos para traer todos los productos de la categoría independientemente del stock o de si estaban ocultos
       const { data } = await supabase
         .from('productos')
         .select('*')
-        .ilike('categoria', '%Alcohol%')
-        .gt('stock_fisico', 0);
+        .ilike('categoria', '%Alcohol%');
 
       if (data) {
-        setProductos(data.filter(p => p.activo !== false));
+        setProductos(data);
       }
       setLoading(false);
     }
@@ -208,7 +210,7 @@ export default function CatalogoBebidas() {
   const agregar = (id: string) => {
     const prod = productos.find(p => p.id_producto === id);
     const cantActual = carrito[id] || 0;
-    if (prod && cantActual < prod.stock_fisico) {
+    if (prod && prod.stock_fisico > 0 && cantActual < prod.stock_fisico) {
       setCarrito({ ...carrito, [id]: cantActual + 1 });
     }
   };
@@ -333,6 +335,7 @@ export default function CatalogoBebidas() {
         <div className="sc-grid">
           {sec.items.map(p => {
             const cant = carrito[p.id_producto] || 0;
+            const sinStock = p.stock_fisico <= 0;
             return (
               <div key={p.id_producto} className="sc-card">
                 <div
@@ -340,7 +343,8 @@ export default function CatalogoBebidas() {
                   style={p.image_url ? { backgroundImage: `url(${p.image_url})` } : undefined}
                 >
                   {!p.image_url && '🍷'}
-                  {p.stock_fisico <= 5 && <span className="sc-low">Quedan {p.stock_fisico}</span>}
+                  {sinStock && <div className="sc-out">Agotado</div>}
+                  {!sinStock && p.stock_fisico <= 5 && <span className="sc-low">Quedan {p.stock_fisico}</span>}
                 </div>
                 <div className="sc-body">
                   <div>
@@ -348,7 +352,9 @@ export default function CatalogoBebidas() {
                     <p className="sc-price">${p.precio}</p>
                   </div>
 
-                  {cant > 0 ? (
+                  {sinStock ? (
+                    <button className="sc-add" disabled>Sin stock</button>
+                  ) : cant > 0 ? (
                     <div className="sc-step">
                       <button onClick={() => quitar(p.id_producto)} aria-label="Quitar uno">−</button>
                       <span>{cant}</span>
