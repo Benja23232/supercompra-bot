@@ -8,7 +8,7 @@ const URL_BOTELLA_SUPERCOMPRAS = 'https://ntungxnymcijfxueucoz.supabase.co/stora
 function camuflarParaMeta(nombre: string, categoria: string, urlImagen: string) {
   const catLower = (categoria || '').toLowerCase();
   
-  // 1. Detectar categoría de alcohol (excluyendo explícitamente "sin alcohol")
+  // 1. Detectar categoría de alcohol
   const esCategoriaAlcohol = catLower.includes('alcohol') && !catLower.includes('sin alcohol');
   
   // 2. Detectar palabras clave típicas de bebidas alcohólicas en el título
@@ -17,11 +17,12 @@ function camuflarParaMeta(nombre: string, categoria: string, urlImagen: string) 
   const esAlcohol = esCategoriaAlcohol || contienePalabraAlcohol;
 
   let nombreMeta = nombre;
+  
+  // CORRECCIÓN 1: Si hay una imagen válida, la respeta. Si viene vacía o nula, recién ahí usa la botella genérica.
   let imagenMeta = urlImagen && urlImagen.trim() !== '' ? urlImagen.trim() : URL_BOTELLA_SUPERCOMPRAS;
 
   if (esAlcohol) {
-    // Asignamos tu imagen personalizada de la botella con el logo de Supercompras
-    imagenMeta = URL_BOTELLA_SUPERCOMPRAS; 
+    // ❌ BORRÉ LA LÍNEA QUE FORZABA LA IMAGEN GENÉRICA ACÁ ADENTRO
     
     // Censura de palabras sensibles que activan el filtro automático de Meta
     nombreMeta = nombreMeta
@@ -53,7 +54,8 @@ export async function POST(request: Request) {
         stock_fisico: Number(stock_fisico), 
         activo: true,
         categoria: categoria || 'Sin asignar',
-        rubro: rubro || null
+        rubro: rubro || null,
+        image_url: image_url || null // Aseguramos que guarde la imagen en el POST también
       }])
       .select()
       .single();
@@ -98,7 +100,8 @@ export async function POST(request: Request) {
 
 export async function PUT(request: Request) {
   try {
-    const { id_producto, nombre, precio, activo, image_url, categoria, rubro } = await request.json(); 
+    // CORRECCIÓN 2: Extraemos stock_fisico de la petición (antes faltaba)
+    const { id_producto, nombre, precio, activo, image_url, categoria, rubro, stock_fisico } = await request.json(); 
 
     if (!id_producto) {
       return NextResponse.json({ success: false, error: 'Falta ID' }, { status: 400 });
@@ -110,6 +113,10 @@ export async function PUT(request: Request) {
     if (activo !== undefined) updateData.activo = activo;
     if (categoria !== undefined) updateData.categoria = categoria;
     if (rubro !== undefined) updateData.rubro = rubro;
+    
+    // CORRECCIÓN 3: Agregamos la nueva imagen y el stock al objeto que actualiza la BD
+    if (image_url !== undefined) updateData.image_url = image_url;
+    if (stock_fisico !== undefined) updateData.stock_fisico = Number(stock_fisico);
 
     const { data: prodActualizado, error } = await supabase
       .from('productos')
