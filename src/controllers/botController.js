@@ -397,9 +397,15 @@ const recibirMensaje = async (req, res) => {
 
             if (opcion.startsWith('rubro_')) {
                 const rubroElegido = opcion.replace('rubro_', '');
+                await enviarMenuCategorias(numeroCliente, rubroElegido);
+                return res.sendStatus(200);
+            }
 
-                // 🍷 DETECCIÓN DE BEBIDAS CON ALCOHOL
-                if (rubroElegido.toLowerCase().includes('alcohol') || rubroElegido.toLowerCase().includes('bebidas')) {
+            if (opcion.startsWith('cat_')) {
+                const categoriaElegida = opcion.replace('cat_', '');
+
+                // 🍷 FILTRO EXCLUSIVO PARA BEBIDAS CON ALCOHOL
+                if (categoriaElegida.toLowerCase().includes('alcohol') || categoriaElegida.toLowerCase().includes('bebidas con alcohol')) {
                     const mensajeAlcohol = "🍷 *Catálogo y Pedidos de Bebidas*\n\n" +
                         "¡Hola! Tenés dos formas de pedir tus bebidas:\n\n" +
                         "1️⃣ *Armá tu pedido online con stock en tiempo real:* \n" +
@@ -411,12 +417,6 @@ const recibirMensaje = async (req, res) => {
                     return res.sendStatus(200);
                 }
 
-                await enviarMenuCategorias(numeroCliente, rubroElegido);
-                return res.sendStatus(200);
-            }
-
-            if (opcion.startsWith('cat_')) {
-                const categoriaElegida = opcion.replace('cat_', '');
                 try {
                     const resProductos = await pool.query("SELECT id_producto, categoria FROM productos WHERE categoria ILIKE $1 AND stock_fisico > 0 LIMIT 30", [`${categoriaElegida}%`]);
                     if (resProductos.rows.length > 0) {
