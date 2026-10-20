@@ -54,10 +54,12 @@ const CSS = `
   --muted: #6B766F;
   --line: #E6E0CD;
   min-height: 100vh;
+  display: flex;
+  flex-direction: column;
   background: var(--cream);
   color: var(--ink);
   font-family: 'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  padding-bottom: 120px;
+  padding-bottom: 80px;
 }
 .sc *, .sc *::before, .sc *::after { box-sizing: border-box; }
 .sc button, .sc input { font-family: inherit; }
@@ -77,7 +79,7 @@ const CSS = `
 .sc-age { display: inline-block; margin-top: 10px; padding: 4px 12px; border-radius: 999px; background: rgba(201,146,43,.18); color: #F3D390; font-size: .85rem; font-weight: 700; }
 
 /* Contenido */
-.sc-wrap { max-width: 1000px; margin: -30px auto 0; padding: 0 20px; position: relative; }
+.sc-wrap { max-width: 1000px; margin: -30px auto 0; padding: 0 20px; position: relative; flex: 1; width: 100%; }
 .sc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
 
 .sc-card { background: var(--paper); border: 1px solid var(--line); border-radius: 18px; overflow: hidden; display: flex; flex-direction: column; transition: transform 0.2s; }
@@ -132,8 +134,8 @@ const CSS = `
 .sc-bar button { padding: 14px 24px; border: none; border-radius: 12px; background: var(--gold); color: #fff; font-weight: 800; font-size: 1rem; cursor: pointer; transition: background 0.2s; }
 .sc-bar button:hover { background: #B07D1E; }
 
-/* Footer */
-.sc-footer { margin-top: 60px; padding: 32px 20px; background: #123F26; color: #CFE0D4; border-top: 1px solid rgba(230,240,205,0.1); text-align: center; }
+/* Footer pegado abajo */
+.sc-footer { margin-top: 60px; padding: 32px 20px; background: #123F26; color: #CFE0D4; border-top: 1px solid rgba(230,240,205,0.1); text-align: center; width: 100%; }
 .sc-footer-in { max-width: 800px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; align-items: center; }
 .sc-footer p { margin: 0; font-size: .95rem; line-height: 1.5; }
 .sc-footer a { color: #F3D390; text-decoration: none; font-weight: 700; }
@@ -284,7 +286,7 @@ export default function CatalogoBebidas() {
       await supabase.from('detalle_pedidos').insert(detalles);
 
       const msj = `¡Hola! Acabo de hacer un pedido de bebidas por la web. 🍷🍻\n*Mi número de pedido es: #${ped.id_pedido}*\nPor favor, confirmame cuando lo empiecen a preparar.`;
-      const urlWa = `https://wa.me/5492392000000?text=${encodeURIComponent(msj)}`;
+      const urlWa = `https://wa.me/5492392692177?text=${encodeURIComponent(msj)}`;
 
       window.location.href = urlWa;
 
@@ -425,8 +427,8 @@ export default function CatalogoBebidas() {
         <div className="sc-footer-in">
           <p className="sc-footer-brand">Super<b>compras</b></p>
           <p>📍 Depósito: <b>Mitre 1044, Tres Lomas</b></p>
-          <p>📞 Contacto / WhatsApp: <a href="https://wa.me/5492392000000" target="_blank" rel="noopener noreferrer">+54 9 2392 00-0000</a></p>
-          <p>🔙 <a href="https://supercompra-bot.vercel.app">Volver al catálogo principal de Supercompra</a></p>
+          <p>📞 Contacto / WhatsApp: <a href="https://wa.me/5492392692177" target="_blank" rel="noopener noreferrer">+54 9 2392 69-2177</a></p>
+          <p>🛒 <a href="https://wa.me/c/5492392692177" target="_blank" rel="noopener noreferrer">Ir al catálogo de WhatsApp</a></p>
           <p style={{ fontSize: '0.8rem', opacity: 0.7, marginTop: '4px' }}>© 2026 Supercompra. Todos los derechos reservados.</p>
         </div>
       </footer>
