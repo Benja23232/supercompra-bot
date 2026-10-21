@@ -26,15 +26,22 @@ export default function DetallePedido() {
 
   useEffect(() => {
     async function fetchDetalleCompleto() {
-      const { data: dataPedido } = await supabase
+      if (!id) return;
+
+      console.log("🔍 Buscando detalles para el ID de pedido:", id);
+
+      // 1. Traer Pedido
+      const { data: dataPedido, error: errorPedido } = await supabase
         .from('pedidos')
         .select('*')
         .eq('id_pedido', id)
-        .single();
+        .maybeSingle();
 
+      if (errorPedido) console.error("Error trayendo pedido:", errorPedido);
       if (dataPedido) setPedido(dataPedido);
 
-      const { data: dataDetalles } = await supabase
+      // 2. Traer Productos del Pedido
+      const { data: dataDetalles, error: errorDetalles } = await supabase
         .from('detalle_pedidos')
         .select(`
           cantidad, 
@@ -44,113 +51,136 @@ export default function DetallePedido() {
         `)
         .eq('id_pedido', id);
 
+      if (errorDetalles) console.error("Error trayendo detalles:", errorDetalles);
       if (dataDetalles) setDetalles(dataDetalles);
       
-      const { data: dataPago } = await supabase
+      // 3. Traer Pago Asociado
+      const { data: dataPago, error: errorPago } = await supabase
         .from('pagos')
         .select('metodo, estado, monto')
         .eq('id_pedido', id)
         .maybeSingle(); 
 
-      if (dataPago) setPago(dataPago);
+      if (errorPago) console.error("Error trayendo pago:", errorPago);
+      console.log("💳 DATOS DEL PAGO TRAÍDOS DE SUPABASE:", dataPago);
+
+      if (dataPago) {
+        setPago(dataPago);
+      } else {
+        setPago(null);
+      }
       
       setLoading(false);
     }
 
-    if (id && autorizado) fetchDetalleCompleto();
+    if (id && autorizado) {
+      fetchDetalleCompleto();
+    }
   }, [id, autorizado]);
 
   if (!autorizado) {
     return (
-      <main style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', backgroundColor: '#f3f4f6' }}>
-        <p style={{ fontSize: '1.2rem', color: '#6b7280', fontWeight: 'bold' }}>Verificando accesos...</p>
+      <main style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', backgroundColor: '#0a0a0a', color: '#9ca3af' }}>
+        <p style={{ fontSize: '1.2rem', fontWeight: 'bold' }}>Verificando accesos...</p>
       </main>
     );
   }
 
-  if (loading) return <p className="texto-cargando">Cargando detalles del pedido...</p>;
-  if (!pedido) return <p className="texto-cargando">No se encontró el pedido.</p>;
+  if (loading) return <div style={{ textAlign: 'center', padding: '40px', color: '#a1a1aa', fontSize: '1.1rem', backgroundColor: '#0a0a0a', minHeight: '100vh' }}>Cargando detalles del pedido...</div>;
+  if (!pedido) return <div style={{ textAlign: 'center', padding: '40px', color: '#a1a1aa', fontSize: '1.1rem', backgroundColor: '#0a0a0a', minHeight: '100vh' }}>No se encontró el pedido.</div>;
 
   const obtenerBadgeEnvio = (estado: string) => {
-    if (estado?.includes('Full')) return { texto: '🚀 ENVÍO FULL (Rápido)', fondo: '#f3e8ff', color: '#7e22ce', borde: '#d8b4fe' };
-    if (estado?.includes('Mañana')) return { texto: '☀️ TURNO MAÑANA (09:30 a 11:00 hs)', fondo: '#fef9c3', color: '#854d0e', borde: '#fde047' };
-    if (estado?.includes('Tarde')) return { texto: '🌙 TURNO TARDE (19:00 a 20:30 hs)', fondo: '#e0f2fe', color: '#0369a1', borde: '#7dd3fc' };
-    if (estado?.includes('Retiro')) return { texto: '🏪 RETIRO EN LOCAL (Mitre 1044)', fondo: '#dcfce7', color: '#166534', borde: '#86efac' };
-    return { texto: '⚠️ FALTAN DATOS (Incompleto)', fondo: '#fee2e2', color: '#991b1b', borde: '#fca5a5' };
+    if (estado?.includes('Full')) return { texto: '🚀 ENVÍO FULL (Rápido)', fondo: '#3b0764', color: '#e9d5ff', borde: '#6b21a8' };
+    if (estado?.includes('Mañana')) return { texto: '☀️ TURNO MAÑANA (09:30 a 11:00 hs)', fondo: '#422006', color: '#fef08a', borde: '#854d0e' };
+    if (estado?.includes('Tarde')) return { texto: '🌙 TURNO TARDE (19:00 a 20:30 hs)', fondo: '#082f49', color: '#bae6fd', borde: '#0369a1' };
+    if (estado?.includes('Retiro')) return { texto: '🏪 RETIRO EN LOCAL (Mitre 1044)', fondo: '#064e3b', color: '#a7f3d0', borde: '#047857' };
+    if (estado?.includes('Armado')) return { texto: '📦 ARMADO / LISTO', fondo: '#065f46', color: '#d1fae5', borde: '#10b981' };
+    return { texto: '⚠️ EN PROCESO', fondo: '#27272a', color: '#f4f4f5', borde: '#3f3f46' };
   };
 
   const badge = obtenerBadgeEnvio(pedido.estado);
 
   const obtenerDetallePago = () => {
-    if (!pago) return <span style={{ color: '#fbbf24' }}>⏳ Pago no registrado todavía</span>;
+    // Si no hay registro en la tabla pagos
+    if (!pago) {
+      return (
+        <span style={{ color: '#fbbf24' }}>
+          ⏳ <strong>Sin registro de pago digital</strong> <span style={{ fontSize: '0.8rem', color: '#a1a1aa' }}>(Pedido antiguo o incompleto)</span>
+        </span>
+      );
+    }
     
     if (pago.metodo === 'Transferencia') {
-      const aprobado = pago.estado === 'Aprobado';
+      const aprobado = pago.estado === 'Aprobado' || pago.estado === 'Aprobado por IA';
       return (
         <span>
           🏦 <strong>Transferencia</strong> — <span style={{ color: aprobado ? '#4ade80' : '#f87171', fontWeight: 'bold' }}>
-            {aprobado ? '✅ Comprobante validado por IA' : '⚠️ Pendiente de revisión / Comprobante no validado'}
+            {aprobado ? '✅ Comprobante validado / Aprobado' : '⚠️ Pendiente de revisión'}
           </span>
         </span>
       );
     } else {
       return (
         <span>
-          💵 <strong>Efectivo</strong> — <span style={{ color: '#60a5fa', fontWeight: 'bold' }}>Pagá al recibir o retirar</span>
+          💵 <strong>Efectivo</strong> — <span style={{ color: '#60a5fa', fontWeight: 'bold' }}>Pagá al recibir o retirar ({pago.estado || 'A Cobrar'})</span>
         </span>
       );
     }
   };
 
   return (
-    <main className="contenedor-pagina" style={{ maxWidth: '800px', margin: '0 auto', padding: '20px' }}>
-      <Link href="/pedidos" className="link-volver" style={{ display: 'inline-block', marginBottom: '20px', color: '#2563eb', textDecoration: 'none' }}>
-        🔙 Volver a la lista de pedidos
-      </Link>
+    <main style={{ maxWidth: '800px', margin: '0 auto', padding: '20px', backgroundColor: '#0a0a0a', minHeight: '100vh', color: '#f4f4f5', fontFamily: 'sans-serif', boxSizing: 'border-box' }}>
+      <div style={{ marginBottom: '20px' }}>
+        <Link href="/pedidos" style={{ color: '#818cf8', textDecoration: 'none', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '5px', width: 'fit-content' }}>
+          🔙 Volver a la lista de pedidos
+        </Link>
+      </div>
 
-      <div className="encabezado-pagina" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
-        <h1 className="titulo-pagina" style={{ fontSize: '1.8rem' }}>Detalle del Pedido #{String(pedido.id_pedido).slice(0, 8)}</h1>
-        <span style={{ backgroundColor: badge.fondo, color: badge.color, border: `1px solid ${badge.borde}`, padding: '8px 14px', borderRadius: '20px', fontWeight: 'bold', fontSize: '0.95rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '15px' }}>
+        <h1 style={{ fontSize: '1.8rem', margin: 0, color: '#f4f4f5' }}>
+          Detalle del Pedido #{String(pedido.id_pedido).slice(0, 8)}
+        </h1>
+        <span style={{ backgroundColor: badge.fondo, color: badge.color, border: `1px solid ${badge.borde}`, padding: '6px 14px', borderRadius: '20px', fontWeight: 'bold', fontSize: '0.85rem' }}>
           {badge.texto}
         </span>
       </div>
 
-      <div style={{ marginBottom: '20px', background: '#18181b', padding: '20px', borderRadius: '8px', border: '1px solid #3f3f46', color: '#fff', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        <p style={{ margin: '0', fontSize: '1.05rem' }}>
+      <div style={{ marginBottom: '25px', backgroundColor: '#121214', padding: '20px', borderRadius: '12px', border: '1px solid #27272a', boxShadow: '0 4px 6px rgba(0,0,0,0.4)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        <p style={{ margin: '0', fontSize: '1.05rem', color: '#f4f4f5' }}>
           🚚 <strong>Turno / Modalidad de Entrega:</strong> <span style={{ color: '#38bdf8', fontWeight: 'bold' }}>{pedido.estado}</span>
         </p>
-        <p style={{ margin: '0' }}><strong>📞 Teléfono del cliente:</strong> +{pedido.whatsapp_id}</p>
-        <p style={{ margin: '0' }}><strong>📍 Dirección de entrega:</strong> {pedido.direccion || 'No especificada'}</p>
-        <p style={{ margin: '0' }}><strong>💳 Método de pago:</strong> {obtenerDetallePago()}</p>
-        <p style={{ margin: '0', fontSize: '1.1rem', marginTop: '5px' }}><strong>💰 Total abonado:</strong> <span style={{ color: '#4ade80' }}>${pedido.total_compra}</span></p>
+        <p style={{ margin: '0', color: '#f4f4f5' }}><strong>📞 Teléfono del cliente:</strong> +{pedido.whatsapp_id}</p>
+        <p style={{ margin: '0', color: '#f4f4f5' }}><strong>📍 Dirección de entrega:</strong> {pedido.direccion || 'No especificada'}</p>
+        <p style={{ margin: '0', color: '#f4f4f5' }}><strong>💳 Método de pago:</strong> {obtenerDetallePago()}</p>
+        <p style={{ margin: '0', fontSize: '1.1rem', marginTop: '5px', color: '#f4f4f5' }}><strong>💰 Total abonado:</strong> <span style={{ color: '#4ade80', fontWeight: 'bold' }}>${pedido.total_compra}</span></p>
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px' }}>
-        <h2>Productos del Pedido:</h2>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+        <h2 style={{ fontSize: '1.2rem', margin: 0, color: '#f4f4f5' }}>Productos del Pedido:</h2>
       </div>
 
-      <div className="contenedor-tabla" style={{ marginTop: '10px', marginBottom: '20px' }}>
-        <table className="tabla-datos" style={{ width: '100%', borderCollapse: 'collapse' }}>
+      <div style={{ backgroundColor: '#121214', borderRadius: '12px', border: '1px solid #27272a', overflow: 'hidden', marginBottom: '25px', boxShadow: '0 4px 6px rgba(0,0,0,0.4)' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
-            <tr style={{ borderBottom: '2px solid #3f3f46' }}>
-              <th className="texto-izq" style={{ textAlign: 'left', padding: '10px' }}>Producto</th>
-              <th className="texto-centro" style={{ textAlign: 'center', padding: '10px' }}>Cantidad</th>
-              <th className="texto-centro" style={{ textAlign: 'center', padding: '10px' }}>Estado de Armado</th>
+            <tr style={{ borderBottom: '1px solid #27272a', backgroundColor: '#18181b', color: '#a1a1aa', fontSize: '0.85rem', textTransform: 'uppercase' }}>
+              <th style={{ textAlign: 'left', padding: '12px' }}>Producto</th>
+              <th style={{ textAlign: 'center', padding: '12px', width: '100px' }}>Cantidad</th>
+              <th style={{ textAlign: 'center', padding: '12px', width: '160px' }}>Estado de Armado</th>
             </tr>
           </thead>
           <tbody>
             {detalles.map((item, index) => {
               return (
-                <tr key={index} style={{ borderBottom: '1px solid #27272a' }}>
-                  <td className="font-fuerte" style={{ padding: '10px', color: '#fdfcfc' }}>
+                <tr key={index} style={{ borderBottom: index < detalles.length - 1 ? '1px solid #27272a' : 'none', backgroundColor: '#121214' }}>
+                  <td style={{ padding: '14px', color: '#f4f4f5', fontWeight: '500' }}>
                     {item.productos?.nombre || 'Producto desconocido'}
                   </td>
-                  <td className="texto-centro" style={{ textAlign: 'center', padding: '10px', color: '#f8f8f8' }}>
+                  <td style={{ textAlign: 'center', padding: '14px', color: '#f4f4f5' }}>
                     <strong style={{ fontSize: '1.1rem' }}>{item.cantidad}</strong>
                   </td>
-                  <td className="texto-centro" style={{ textAlign: 'center', padding: '10px' }}>
-                    <span style={{ backgroundColor: '#27272a', padding: '4px 10px', borderRadius: '12px', fontSize: '0.85rem', color: '#d4d4d8', fontWeight: 'bold' }}>
-                      📋 Pendiente en depósito
+                  <td style={{ textAlign: 'center', padding: '14px' }}>
+                    <span style={{ backgroundColor: '#27272a', padding: '4px 10px', borderRadius: '12px', fontSize: '0.8rem', color: '#d4d4d8', fontWeight: 'bold', border: '1px solid #3f3f46' }}>
+                      📋 En depósito
                     </span>
                   </td>
                 </tr>
@@ -167,13 +197,14 @@ export default function DetallePedido() {
             display: 'block',
             textAlign: 'center',
             width: '100%', 
-            padding: '12px', 
+            padding: '14px', 
             backgroundColor: '#16a34a', 
             color: '#fff', 
-            borderRadius: '8px', 
-            fontSize: '1rem', 
+            borderRadius: '10px', 
+            fontSize: '1.05rem', 
             fontWeight: 'bold', 
-            textDecoration: 'none' 
+            textDecoration: 'none',
+            boxShadow: '0 4px 12px rgba(22, 163, 74, 0.3)'
           }}
         >
           📦 Ir a Armar este Pedido
