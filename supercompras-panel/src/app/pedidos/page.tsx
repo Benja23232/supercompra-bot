@@ -20,25 +20,41 @@ export default function Pedidos() {
   const [pedidosSeleccionados, setPedidosSeleccionados] = useState<any[]>([]);
   const [estadoMasivo, setEstadoMasivo] = useState('En Preparación');
 
-  // --- FUNCIÓN DE ALERTA DE AUDIO (Web Audio API) ---
+  // --- FUNCIÓN DE ALERTA DE AUDIO (Web Audio API - Doble Beep Fuerte) ---
   const reproducirSonidoAlerta = () => {
     try {
       const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
+      
+      // Primer tono
+      const osc1 = audioCtx.createOscillator();
+      const gain1 = audioCtx.createGain();
+      osc1.type = 'sine';
+      osc1.frequency.setValueAtTime(880, audioCtx.currentTime); // La5
+      gain1.gain.setValueAtTime(0.4, audioCtx.currentTime);
+      gain1.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
+      
+      osc1.connect(gain1);
+      gain1.connect(audioCtx.destination);
+      
+      osc1.start();
+      osc1.stop(audioCtx.currentTime + 0.15);
 
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(587.33, audioCtx.currentTime); // Nota Re5
-      osc.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.15); // Sube a La5
+      // Segundo tono más agudo
+      setTimeout(() => {
+        const osc2 = audioCtx.createOscillator();
+        const gain2 = audioCtx.createGain();
+        osc2.type = 'sine';
+        osc2.frequency.setValueAtTime(1318.51, audioCtx.currentTime); // Mi6
+        gain2.gain.setValueAtTime(0.4, audioCtx.currentTime);
+        gain2.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.25);
+        
+        osc2.connect(gain2);
+        gain2.connect(audioCtx.destination);
+        
+        osc2.start();
+        osc2.stop(audioCtx.currentTime + 0.25);
+      }, 120);
 
-      gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
-
-      osc.connect(gain);
-      gain.connect(audioCtx.destination);
-
-      osc.start();
-      osc.stop(audioCtx.currentTime + 0.4);
     } catch (e) {
       console.error("El navegador bloqueó el audio automático:", e);
     }
@@ -74,7 +90,7 @@ export default function Pedidos() {
         (payload) => {
           if (payload.eventType === 'INSERT') {
             setAlertaNuevoPedido(true);
-            reproducirSonidoAlerta(); // 🔔 Suena el alerta sonora al instante
+            reproducirSonidoAlerta(); // 🔔 Suena la alerta sonora al instante
             setTimeout(() => setAlertaNuevoPedido(false), 6000);
           }
           fetchPedidos();
