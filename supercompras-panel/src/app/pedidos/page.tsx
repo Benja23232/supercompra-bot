@@ -24,7 +24,7 @@ export default function Pedidos() {
     const { data, error } = await supabase
       .from('pedidos')
       .select('*')
-      .order('fecha_creacion', { ascending: false });
+      .order('id_pedido', { ascending: false });
 
     if (error) console.error("Error al traer pedidos:", error);
     else setPedidos(data || []);
@@ -61,6 +61,25 @@ export default function Pedidos() {
       supabase.removeChannel(channel);
     };
   }, [router]);
+
+  // Filtrado por turno según los botones superiores
+  const pedidosPorTurno = pedidos.filter((pedido) => {
+    if (filtro === 'todos') return true;
+    if (filtro === 'full') return pedido.estado?.includes('Full');
+    if (filtro === 'manana') return pedido.estado?.includes('Mañana');
+    if (filtro === 'tarde') return pedido.estado?.includes('Tarde');
+    return true;
+  });
+
+  // Clasificación por etapas
+  const pedidosPendientes = pedidosPorTurno.filter(p => !p.estado || p.estado.includes('Pendiente'));
+  const pedidosEnProceso = pedidosPorTurno.filter(p => 
+    p.estado?.includes('En Preparación') || 
+    p.estado?.includes('En Preparacion') || 
+    p.estado?.includes('En Proceso')
+  );
+  const pedidosEnReparto = pedidosPorTurno.filter(p => p.estado?.includes('En Reparto'));
+  const pedidosFinalizados = pedidosPorTurno.filter(p => p.estado?.includes('Entregado') || p.estado?.includes('Cancelado'));
 
   const cambiarEstado = async (id: any, nuevoEstadoElegido: string, estadoAnterior: string) => {
     let estadoFinal = nuevoEstadoElegido;
@@ -192,23 +211,6 @@ export default function Pedidos() {
       timeZone: 'America/Argentina/Buenos_Aires'
     });
   };
-
-  const pedidosPorTurno = pedidos.filter((pedido) => {
-    if (filtro === 'todos') return true;
-    if (filtro === 'full') return pedido.estado?.includes('Full');
-    if (filtro === 'manana') return pedido.estado?.includes('Mañana');
-    if (filtro === 'tarde') return pedido.estado?.includes('Tarde');
-    return true;
-  });
-
-  const pedidosPendientes = pedidosPorTurno.filter(p => !p.estado || p.estado.includes('Pendiente'));
-  const pedidosEnProceso = pedidosPorTurno.filter(p => 
-    p.estado?.includes('En Preparación') || 
-    p.estado?.includes('En Preparacion') || 
-    p.estado?.includes('En Proceso')
-  );
-  const pedidosEnReparto = pedidosPorTurno.filter(p => p.estado?.includes('En Reparto'));
-  const pedidosFinalizados = pedidosPorTurno.filter(p => p.estado?.includes('Entregado') || p.estado?.includes('Cancelado'));
 
   if (!autorizado) {
     return (
@@ -412,7 +414,6 @@ export default function Pedidos() {
       alignItems: 'center',
       paddingBottom: pedidosSeleccionados.length > 0 ? '100px' : '20px'
     }}>
-      
       <div style={{ width: '100%', maxWidth: '1400px' }}>
 
         {alertaNuevoPedido && (
@@ -429,8 +430,7 @@ export default function Pedidos() {
             fontWeight: 'bold',
             display: 'flex',
             alignItems: 'center',
-            gap: '10px',
-            animation: 'slideIn 0.5s ease-out'
+            gap: '10px'
           }}>
             <span>🔔 ¡Nuevo pedido ingresado en el sistema!</span>
           </div>
@@ -449,11 +449,9 @@ export default function Pedidos() {
         </div>
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px', marginBottom: '25px', width: '100%' }}>
-          <div>
-            <h1 style={{ margin: 0, fontSize: '1.8rem', color: '#f4f4f5', display: 'flex', alignItems: 'center', gap: '10px' }}>
-              🛒 Logística y Armado de Pedidos
-            </h1>
-          </div>
+          <h1 style={{ margin: 0, fontSize: '1.8rem', color: '#f4f4f5' }}>
+            🛒 Logística y Armado de Pedidos
+          </h1>
           
           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
             <button 
@@ -478,32 +476,32 @@ export default function Pedidos() {
         </div>
 
         <div style={{ backgroundColor: '#121214', padding: '20px', borderRadius: '12px', marginBottom: '35px', border: '1px solid #27272a', width: '100%', boxSizing: 'border-box' }}>
-          <h2 style={{ fontSize: '1.05rem', margin: '0 0 15px 0', color: '#f4f4f5', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            📍 1. Filtrar por Turno / Envío
+          <h2 style={{ fontSize: '1.05rem', margin: '0 0 15px 0', color: '#f4f4f5' }}>
+            📍 Filtrar por Turno / Envío
           </h2>
           
           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
             <button onClick={() => setFiltro('todos')} 
-              style={{ flex: 1, minWidth: '130px', padding: '10px 15px', borderRadius: '8px', border: '1px solid #27272a', fontWeight: 'bold', fontSize: '0.9rem', backgroundColor: filtro === 'todos' ? '#4f46e5' : '#18181b', color: 'white', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px' }}>
+              style={{ flex: 1, minWidth: '130px', padding: '10px 15px', borderRadius: '8px', border: '1px solid #27272a', fontWeight: 'bold', fontSize: '0.9rem', backgroundColor: filtro === 'todos' ? '#4f46e5' : '#18181b', color: 'white', cursor: 'pointer' }}>
               📋 Todos ({pedidos.length})
             </button>
             <button onClick={() => setFiltro('full')} 
-              style={{ flex: 1, minWidth: '130px', padding: '10px 15px', borderRadius: '8px', border: '1px solid #27272a', fontWeight: 'bold', fontSize: '0.9rem', backgroundColor: filtro === 'full' ? '#4f46e5' : '#18181b', color: 'white', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px' }}>
+              style={{ flex: 1, minWidth: '130px', padding: '10px 15px', borderRadius: '8px', border: '1px solid #27272a', fontWeight: 'bold', fontSize: '0.9rem', backgroundColor: filtro === 'full' ? '#4f46e5' : '#18181b', color: 'white', cursor: 'pointer' }}>
               🚀 Envío Full ({pedidos.filter(p => p.estado?.includes('Full')).length})
             </button>
             <button onClick={() => setFiltro('manana')} 
-              style={{ flex: 1, minWidth: '130px', padding: '10px 15px', borderRadius: '8px', border: '1px solid #27272a', fontWeight: 'bold', fontSize: '0.9rem', backgroundColor: filtro === 'manana' ? '#4f46e5' : '#18181b', color: 'white', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px' }}>
+              style={{ flex: 1, minWidth: '130px', padding: '10px 15px', borderRadius: '8px', border: '1px solid #27272a', fontWeight: 'bold', fontSize: '0.9rem', backgroundColor: filtro === 'manana' ? '#4f46e5' : '#18181b', color: 'white', cursor: 'pointer' }}>
               ☀️ Mañana ({pedidos.filter(p => p.estado?.includes('Mañana')).length})
             </button>
             <button onClick={() => setFiltro('tarde')} 
-              style={{ flex: 1, minWidth: '130px', padding: '10px 15px', borderRadius: '8px', border: '1px solid #27272a', fontWeight: 'bold', fontSize: '0.9rem', backgroundColor: filtro === 'tarde' ? '#4f46e5' : '#18181b', color: 'white', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px' }}>
+              style={{ flex: 1, minWidth: '130px', padding: '10px 15px', borderRadius: '8px', border: '1px solid #27272a', fontWeight: 'bold', fontSize: '0.9rem', backgroundColor: filtro === 'tarde' ? '#4f46e5' : '#18181b', color: 'white', cursor: 'pointer' }}>
               🌙 Tarde ({pedidos.filter(p => p.estado?.includes('Tarde')).length})
             </button>
           </div>
         </div>
         
         {loading ? (
-          <div style={{ textAlign: 'center', padding: '40px', color: '#a1a1aa', fontSize: '1.1rem', fontWeight: '500' }}>
+          <div style={{ textAlign: 'center', padding: '40px', color: '#a1a1aa', fontSize: '1.1rem' }}>
             Cargando ventas del depósito...
           </div>
         ) : (
@@ -589,13 +587,6 @@ export default function Pedidos() {
           </button>
         </div>
       )}
-
-      <style dangerouslySetInnerHTML={{__html: `
-        @keyframes slideIn {
-          from { transform: translateX(100%); opacity: 0; }
-          to { transform: translateX(0); opacity: 1; }
-        }
-      `}} />
     </main>
   );
 }
