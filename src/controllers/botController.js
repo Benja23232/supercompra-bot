@@ -188,7 +188,8 @@ const recibirMensaje = async (req, res) => {
         mensajesProcesados.add(message.id);
         if (mensajesProcesados.size > 500) mensajesProcesados.clear();
 
-        let numeroCliente = message.from.startsWith("549") ? message.from.replace("549", "54") : message.from;
+        // FIX: Tomamos el número exacto que manda Meta, sin borrarle el "9" de Argentina
+        let numeroCliente = message.from;
 
         // 🛑 BLOQUEO ESTRICTO: Si está esperando dirección y manda algo no válido
         if (pedidosEsperandoDireccion.has(numeroCliente) && message.type !== 'text' && message.type !== 'location' && message.type !== 'interactive' && message.type !== 'order') {
