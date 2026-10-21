@@ -51,6 +51,7 @@ async function enviarMenuRubros(numeroCliente) {
 
             const dataMenuRubros = {
                 messaging_product: "whatsapp",
+                recipient_type: "individual", // <-- FIX: Parámetro exigido a veces por Meta
                 to: numeroCliente,
                 type: "interactive",
                 interactive: {
@@ -70,7 +71,7 @@ async function enviarMenuRubros(numeroCliente) {
             
             console.log("📤 [3/3] Enviando petición a Meta para mostrar el menú...");
             await axios.post(`https://graph.facebook.com/v17.0/${process.env.WHATSAPP_PHONE_ID}/messages`, dataMenuRubros, { headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` } });
-            console.log("🚀 ¡Menú enviado exitosamente!");
+            console.log("🚀 ¡Menú enviado exitosamente a la API!");
         } else {
              await enviarMensaje(numeroCliente, "¡Hola! 👋 Bienvenido a Supercompra.\n\nEn este momento estamos reponiendo stock. ¡Volvé a consultarnos más tarde!");
         }
@@ -92,6 +93,7 @@ async function enviarMenuCategorias(numeroCliente, rubro) {
 
             const dataMenuCategorias = {
                 messaging_product: "whatsapp",
+                recipient_type: "individual",
                 to: numeroCliente,
                 type: "interactive",
                 interactive: {
@@ -170,12 +172,26 @@ const verificarToken = (req, res) => {
 
 const recibirMensaje = async (req, res) => {
     try {
+        // --- NUEVO: INTERCEPTOR DE ERRORES ASINCRÓNICOS DE META ---
+        const status = req.body.entry?.[0]?.changes?.[0]?.value?.statuses?.[0];
+        if (status) {
+            if (status.status === 'failed') {
+                console.error("\n🚨 ==========================================");
+                console.error(`🚨 META RECHAZÓ EL MENSAJE PARA ${status.recipient_id}! MOTIVO EXACTO:`);
+                console.error(JSON.stringify(status.errors, null, 2));
+                console.error("🚨 ==========================================\n");
+            } else {
+                console.log(`📡 Acuse de Meta: Mensaje [${status.status}] para el número ${status.recipient_id}`);
+            }
+            return res.sendStatus(200);
+        }
+
         console.log("🔥 Entró a recibirMensaje"); 
 
         const message = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
         
         if (!message) {
-            console.log("🛑 Abortado: No hay mensaje en el body.");
+            console.log("🛑 Abortado: Estructura desconocida o sin mensajes.");
             return res.sendStatus(200);
         }
 
@@ -188,8 +204,8 @@ const recibirMensaje = async (req, res) => {
         mensajesProcesados.add(message.id);
         if (mensajesProcesados.size > 500) mensajesProcesados.clear();
 
-        // FIX: Tomamos el número exacto que manda Meta, sin borrarle el "9" de Argentina
-        let numeroCliente = message.from;
+        // FIX: Regresamos a la lógica obligatoria para Argentina de reemplazar el 549 por 54.
+        let numeroCliente = message.from.startsWith("549") ? message.from.replace("549", "54") : message.from;
 
         // 🛑 BLOQUEO ESTRICTO: Si está esperando dirección y manda algo no válido
         if (pedidosEsperandoDireccion.has(numeroCliente) && message.type !== 'text' && message.type !== 'location' && message.type !== 'interactive' && message.type !== 'order') {
@@ -216,6 +232,7 @@ const recibirMensaje = async (req, res) => {
 
                 const dataBotonesTurno = {
                     messaging_product: "whatsapp",
+                    recipient_type: "individual",
                     to: numeroCliente,
                     type: "interactive",
                     interactive: {
@@ -262,6 +279,7 @@ const recibirMensaje = async (req, res) => {
 
                 const dataBotonesTurno = {
                     messaging_product: "whatsapp",
+                    recipient_type: "individual",
                     to: numeroCliente,
                     type: "interactive",
                     interactive: {
@@ -398,7 +416,7 @@ const recibirMensaje = async (req, res) => {
                 
                 const totalCarrito = subtotal;
 
-                // Guardamos los datos de forma temporal en memoria RAM hasta que el usuario termine todo el flujo
+                // Guardamos los datos de forma temporal
                 const datosTemporales = {
                     subtotal: subtotal,
                     total: totalCarrito,
@@ -410,6 +428,7 @@ const recibirMensaje = async (req, res) => {
                 
                 const dataOpcionesEntrega = {
                     messaging_product: "whatsapp",
+                    recipient_type: "individual",
                     to: numeroCliente,
                     type: "interactive",
                     interactive: {
@@ -497,6 +516,7 @@ const recibirMensaje = async (req, res) => {
 
                         const dataBotonVolver = {
                             messaging_product: "whatsapp",
+                            recipient_type: "individual",
                             to: numeroCliente,
                             type: "interactive",
                             interactive: {
@@ -541,6 +561,7 @@ const recibirMensaje = async (req, res) => {
 
                 const dataMenuPago = {
                     messaging_product: "whatsapp",
+                    recipient_type: "individual",
                     to: numeroCliente,
                     type: "interactive",
                     interactive: {
@@ -592,6 +613,7 @@ const recibirMensaje = async (req, res) => {
 
                 const dataMenuPago = {
                     messaging_product: "whatsapp",
+                    recipient_type: "individual",
                     to: numeroCliente,
                     type: "interactive",
                     interactive: {
