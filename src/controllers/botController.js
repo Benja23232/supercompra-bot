@@ -621,7 +621,15 @@ const recibirMensaje = async (req, res) => {
                     pedidosEsperandoPago.delete(numeroCliente);
                     pedidosEsperandoComprobante.set(numeroCliente, { idPedido: idPedidoAsociado, totalEsperado: totalCompra });
                     
-                    await enviarMensaje(numeroCliente, `🏦 Elegiste abonar con Transferencia.\n\nPara confirmar tu pedido, por favor realizá una transferencia por el total de *$${totalCompra}* a la siguiente cuenta:\n\n*CBU:* 0000003100010768128016\n*Alias:* supercompras.3lo\n\nUna vez que hagas el pago, por favor *envianos la foto del comprobante* por este chat. 🧾✅`);
+                    // Mensaje con instrucciones
+                    await enviarMensaje(numeroCliente, `🏦 Elegiste abonar con Transferencia.\n\nPara confirmar tu pedido, por favor realizá una transferencia por el total de *$${totalCompra}*.\n\n👇 *Mantené presionado el CBU o el Alias abajo para copiarlo fácilmente:*`);
+                    
+                    // CBU y Alias aislados para copiado rápido
+                    await enviarMensaje(numeroCliente, "0000003100010768128016");
+                    await enviarMensaje(numeroCliente, "supercompras.3lo");
+
+                    // Pedido de comprobante final
+                    await enviarMensaje(numeroCliente, "Una vez que hagas el pago, por favor *envianos la foto del comprobante* por este chat. 🧾✅");
 
                 } else if (opcion === 'pago_efectivo') {
                     await pool.query(`INSERT INTO pagos (id_pedido, metodo, estado, monto) VALUES ($1, $2, $3, $4)`, [idPedidoAsociado, 'Efectivo', 'A Cobrar (Efectivo)', totalCompra]);
