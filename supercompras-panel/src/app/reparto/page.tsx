@@ -84,15 +84,46 @@ export default function PantallaRepartidor() {
     };
   }, [autorizado, emailRepartidor]);
 
+  // --- CARGAR PEDIDOS CON SU INFORMACIÓN DE PAGO ---
   const cargarPedidosParaReparto = async () => {
     setCargando(true);
-    const { data, error } = await supabase
+    
+    // Traemos los pedidos en reparto
+    const { data: dataPedidos, error } = await supabase
       .from('pedidos')
       .select('*')
       .like('estado', '%En Reparto%')
       .order('fecha_creacion', { ascending: true });
 
-    if (data) setPedidos(data);
+    if (error) {
+      console.error("Error al cargar pedidos:", error);
+      setCargando(false);
+      return;
+    }
+
+    if (dataPedidos && dataPedidos.length > 0) {
+      // Extraemos los IDs para buscar sus pagos en lote
+      const idsPedidos = dataPedidos.map(p => p.id_pedido);
+
+      const { data: dataPagos } = await supabase
+        .from('pagos')
+        .select('id_pedido, metodo, estado, monto')
+        .in('id_pedido', idsPedidos);
+
+      // Combinamos cada pedido con su respectivo pago
+      const pedidosConPago = dataPedidos.map(pedido => {
+        const pagoAsociado = dataPagos?.find(pag => pag.id_pedido === pedido.id_pedido);
+        return {
+          ...pedido,
+          pago: pagoAsociado || null
+        };
+      });
+
+      setPedidos(pedidosConPago);
+    } else {
+      setPedidos([]);
+    }
+
     setCargando(false);
   };
 
@@ -215,33 +246,68 @@ export default function PantallaRepartidor() {
           <div style={{ color: 'black', textAlign: 'center', backgroundColor: '#ffffff', padding: '40px 20px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>🎉 ¡Todo entregado!</div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-            {pedidosFiltrados.map((pedido, index) => (
-              <div key={pedido.id_pedido} style={{ backgroundColor: '#ffffff', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
-                <h3 style={{ margin: '0 0 10px 0', fontSize: '1.05rem', color: '#64748b', borderBottom: '1px solid #f1f5f9', paddingBottom: '8px', display: 'flex', justifyContent: 'space-between' }}>
-                  <span>📦 Entrega #{index + 1}</span>
-                  <span style={{ fontSize: '0.85rem' }}>ID: #{String(pedido.id_pedido).slice(0, 6)}</span>
-                </h3>
-                
-                <div style={{ marginBottom: '12px' }}>
-                  <p style={{ margin: '0 0 4px 0', color: '#1e293b', fontSize: '1.15rem', fontWeight: 'bold' }}>
-                    👤 {pedido.nombre_cliente || 'Cliente sin nombre'}
-                  </p>
-                  <p style={{ margin: 0, color: '#475569', fontSize: '0.95rem' }}>
-                    📞 {pedido.whatsapp_id ? `+${pedido.whatsapp_id}` : 'Sin teléfono cargado'}
-                  </p>
-                </div>
+            {pedidosFiltrados.map((pedido, index) => {
+              const pago = pedido.pago;
+              const esTransferencia = pago?.metodo === 'Transferencia';
+              const aprobado = esTransferencia && (pago?.estado === 'Aprobado' || pago?.estado === 'Aprobado por IA');
 
-                <div style={{ backgroundColor: '#f8fafc', padding: '12px', borderRadius: '8px', marginBottom: '15px', border: '1px solid #e2e8f0' }}>
-                  <p style={{ color:'black', margin: '0 0 5px 0', fontSize: '0.95rem' }}>📍 {pedido.direccion || 'Sin dirección'}</p>
-                  {pedido.direccion && <button onClick={() => abrirMapaIndividual(pedido.direccion)} style={{ backgroundColor: '#e2e8f0', border: 'none', padding: '8px 12px', borderRadius: '6px', fontSize: '0.85rem', cursor: 'pointer' }}>Solo Mapa</button>}
-                </div>
+              return (
+                <div key={pedido.id_pedido} style={{ backgroundColor: '#ffffff', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
+                  
+                  <h3 style={{ margin: '0 0 10px 0', fontSize: '1.05rem', color: '#64748b', borderBottom: '1px solid #f1f5f9', paddingBottom: '8px', display: 'flex', justifyContent: 'space-between' }}>
+                    <span>📦 Entrega #{index + 1}</span>
+                    <span style={{ fontSize: '0.85rem' }}>ID: #{String(pedido.id_pedido).slice(0, 6)}</span>
+                  </h3>
+                  
+                  <div style={{ marginBottom: '12px' }}>
+                    <p style={{ margin: '0 0 4px 0', color: '#1e293b', fontSize: '1.15rem', fontWeight: 'bold' }}>
+                      👤 {pedido.nombre_cliente || 'Cliente sin nombre'}
+                    </p>
+                    <p style={{ margin: 0, color: '#475569', fontSize: '0.95rem' }}>
+                      📞 {pedido.whatsapp_id ? `+${pedido.whatsapp_id}` : 'Sin teléfono cargado'}
+                    </p>
+                  </div>
 
-                <div style={{ display: 'flex', gap: '10px' }}>
-                  <button onClick={() => notificarLlegada(pedido)} style={{ flex: 1, backgroundColor: '#f59e0b', color: 'white', border: 'none', padding: '12px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>🔔 Avisar</button>
-                  <button onClick={() => marcarEntregado(pedido)} style={{ flex: 1, backgroundColor: '#2563eb', color: 'white', border: 'none', padding: '12px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>✅ Entregado</button>
+                  {/* TARJETA DE PAGO Y MONTO */}
+                  <div style={{ 
+                    backgroundColor: aprobado ? '#f0fdf4' : '#fffbeb', 
+                    padding: '12px', 
+                    borderRadius: '8px', 
+                    marginBottom: '12px', 
+                    border: `1px solid ${aprobado ? '#bbf7d0' : '#fef3c7'}`,
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center'
+                  }}>
+                    <div>
+                      <span style={{ fontSize: '0.8rem', fontWeight: 'bold', color: aprobado ? '#166534' : '#b45309', display: 'block', textTransform: 'uppercase' }}>
+                        {esTransferencia ? '🏦 Transferencia' : '💵 Efectivo'}
+                      </span>
+                      <span style={{ fontSize: '0.85rem', color: aprobado ? '#15803d' : '#92400e', fontWeight: '500' }}>
+                        {aprobado ? '✅ Pagado / Aprobado' : '⚠️ A Cobrar al entregar'}
+                      </span>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Total a cobrar</span>
+                      <span style={{ fontSize: '1.25rem', fontWeight: 'bold', color: '#0f172a' }}>
+                        ${pedido.total_compra || '0.00'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div style={{ backgroundColor: '#f8fafc', padding: '12px', borderRadius: '8px', marginBottom: '15px', border: '1px solid #e2e8f0' }}>
+                    <p style={{ color:'black', margin: '0 0 5px 0', fontSize: '0.95rem' }}>📍 {pedido.direccion || 'Sin dirección'}</p>
+                    {pedido.direccion && <button onClick={() => abrirMapaIndividual(pedido.direccion)} style={{ backgroundColor: '#e2e8f0', border: 'none', padding: '8px 12px', borderRadius: '6px', fontSize: '0.85rem', cursor: 'pointer' }}>Solo Mapa</button>}
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '10px' }}>
+                    <button onClick={() => notificarLlegada(pedido)} style={{ flex: 1, backgroundColor: '#f59e0b', color: 'white', border: 'none', padding: '12px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>🔔 Avisar</button>
+                    <button onClick={() => marcarEntregado(pedido)} style={{ flex: 1, backgroundColor: '#2563eb', color: 'white', border: 'none', padding: '12px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>✅ Entregado</button>
+                  </div>
+
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
