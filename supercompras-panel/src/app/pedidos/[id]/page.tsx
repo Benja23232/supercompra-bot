@@ -26,7 +26,6 @@ export default function DetallePedido() {
 
   useEffect(() => {
     async function fetchDetalleCompleto() {
-      // 1. Traer el pedido
       const { data: dataPedido } = await supabase
         .from('pedidos')
         .select('*')
@@ -35,7 +34,6 @@ export default function DetallePedido() {
 
       if (dataPedido) setPedido(dataPedido);
 
-      // 2. Traer los detalles de los productos
       const { data: dataDetalles } = await supabase
         .from('detalle_pedidos')
         .select(`
@@ -48,7 +46,6 @@ export default function DetallePedido() {
 
       if (dataDetalles) setDetalles(dataDetalles);
       
-      // 3. Traer los datos del pago
       const { data: dataPago } = await supabase
         .from('pagos')
         .select('metodo, estado, monto')
@@ -74,7 +71,6 @@ export default function DetallePedido() {
   if (loading) return <p className="texto-cargando">Cargando detalles del pedido...</p>;
   if (!pedido) return <p className="texto-cargando">No se encontró el pedido.</p>;
 
-  // Identificador visual exacto del turno de reparto o modalidad
   const obtenerBadgeEnvio = (estado: string) => {
     if (estado?.includes('Full')) return { texto: '🚀 ENVÍO FULL (Rápido)', fondo: '#f3e8ff', color: '#7e22ce', borde: '#d8b4fe' };
     if (estado?.includes('Mañana')) return { texto: '☀️ TURNO MAÑANA (09:30 a 11:00 hs)', fondo: '#fef9c3', color: '#854d0e', borde: '#fde047' };
@@ -85,7 +81,6 @@ export default function DetallePedido() {
 
   const badge = obtenerBadgeEnvio(pedido.estado);
 
-  // Función para desglosar el método de pago y el estado del comprobante
   const obtenerDetallePago = () => {
     if (!pago) return <span style={{ color: '#fbbf24' }}>⏳ Pago no registrado todavía</span>;
     
@@ -120,7 +115,6 @@ export default function DetallePedido() {
         </span>
       </div>
 
-      {/* CUADRO DE INFORMACIÓN CLAVE: TURNO, PAGO Y DIRECCIÓN */}
       <div style={{ marginBottom: '20px', background: '#18181b', padding: '20px', borderRadius: '8px', border: '1px solid #3f3f46', color: '#fff', display: 'flex', flexDirection: 'column', gap: '10px' }}>
         <p style={{ margin: '0', fontSize: '1.05rem' }}>
           🚚 <strong>Turno / Modalidad de Entrega:</strong> <span style={{ color: '#38bdf8', fontWeight: 'bold' }}>{pedido.estado}</span>
