@@ -164,10 +164,22 @@ const verificarToken = (req, res) => {
 
 const recibirMensaje = async (req, res) => {
     try {
-        const message = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
-        if (!message) return res.sendStatus(200);
+        console.log("🔥 Entró a recibirMensaje"); // Log de rastreo
 
-        if (mensajesProcesados.has(message.id)) return res.sendStatus(200);
+        const message = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
+        
+        // Si no hay mensaje (puede ser una confirmación de lectura o entrega), cortamos acá
+        if (!message) {
+            console.log("🛑 Abortado: No hay mensaje en el body.");
+            return res.sendStatus(200);
+        }
+
+        console.log(`💬 Mensaje recibido de ${message.from}: Tipo [${message.type}]`); // Log de rastreo
+
+        if (mensajesProcesados.has(message.id)) {
+            console.log("♻️ Abortado: Mensaje duplicado.");
+            return res.sendStatus(200);
+        }
         mensajesProcesados.add(message.id);
         if (mensajesProcesados.size > 500) mensajesProcesados.clear();
 
@@ -278,6 +290,7 @@ const recibirMensaje = async (req, res) => {
                 return res.sendStatus(200);
             }
 
+            // Fallback: Muestra el menú para cualquier texto ("Hola", "Buen dia", etc)
             await enviarMenuRubros(numeroCliente);
             return res.sendStatus(200);
         }
@@ -315,9 +328,11 @@ const recibirMensaje = async (req, res) => {
                         await pool.query('UPDATE pedidos SET estado = $1 WHERE id_pedido = $2', ['En Preparación', datosPago.idPedido]);
                         pedidosEsperandoComprobante.delete(numeroCliente);
                         
+                        // FIX: Sintaxis de template literal corregida
                         await enviarMensaje(numeroCliente, `✅ ¡Pago validado con éxito!\n\nImporte de *$${montoConPuntoMiles}* confirmado. ¡Pedido en preparación!`);
                         await dispararEnvioFactura(datosPago.idPedido, numeroCliente);
                     } else {
+                        // FIX: Sintaxis de template literal corregida
                         await enviarMensaje(numeroCliente, `⚠️ No pude validar automáticamente el monto exacto de *$${montoConPuntoMiles}* en la foto. Un asesor lo revisará a la brevedad.`);
                         pedidosEsperandoComprobante.delete(numeroCliente);
                     }
@@ -502,7 +517,7 @@ const recibirMensaje = async (req, res) => {
 
             if (opcion === 'entrega_domicilio') {
                 if (!pedidosEsperandoDireccion.has(numeroCliente)) return await enviarMensaje(numeroCliente, "La sesión expiró, por favor reenviá tu carrito.");
-                await enviarMensaje(numeroCliente, "¡Perfecto! 🚚\n\nPara el envío, podés hacer দুই cosas:\n1️⃣ *Escribirnos tu dirección* (Ej: Belgrano 1024)\n2️⃣ Tocar el 📎 (clip) abajo y enviarnos tu *Ubicación actual* de WhatsApp para mayor precisión.");
+                await enviarMensaje(numeroCliente, "¡Perfecto! 🚚\n\nPara el envío, podés hacer dos cosas:\n1️⃣ *Escribirnos tu dirección* (Ej: Belgrano 1024)\n2️⃣ Tocar el 📎 (clip) abajo y enviarnos tu *Ubicación actual* de WhatsApp para mayor precisión.");
                 return res.sendStatus(200);
             }
 
