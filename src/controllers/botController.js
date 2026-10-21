@@ -4,6 +4,8 @@ const { enviarMensaje } = require('../services/whatsapp');
 const { pool } = require('../services/db'); 
 const Tesseract = require('tesseract.js'); 
 
+// Mapas temporales en memoria para retener el carrito hasta que el cliente finalice el flujo
+const carritosPendientes = new Map(); 
 const pedidosEsperandoDireccion = new Map(); 
 const pedidosEsperandoTurno = new Map();
 const pedidosEsperandoPago = new Map();
@@ -171,7 +173,7 @@ const recibirMensaje = async (req, res) => {
 
         let numeroCliente = message.from.startsWith("549") ? message.from.replace("549", "54") : message.from;
 
-        // 🛑 BLOQUEO ESTRICTO: Si está esperando dirección y manda audio, sticker o cualquier formato no válido
+        // 🛑 BLOQUEO ESTRICTO: Si está esperando dirección y manda audio, sticker u otro formato no válido
         if (pedidosEsperandoDireccion.has(numeroCliente) && message.type !== 'text' && message.type !== 'location' && message.type !== 'interactive' && message.type !== 'order') {
             await enviarMensaje(numeroCliente, "🛑 *Falta tu dirección.*\n\nNo podemos procesar audios ni stickers en este paso. Por favor, escribí tu calle y número con texto, o envianos tu ubicación GPS (📍) para poder avanzar con la compra.");
             return res.sendStatus(200);
@@ -184,14 +186,14 @@ const recibirMensaje = async (req, res) => {
                 const lng = message.location.longitude;
                 const direccionGPS = `https://maps.google.com/?q=${lat},${lng}`;
 
-                const datosPedido = pedidosEsperandoDireccion.get(numeroCliente);
-                await pool.query('UPDATE pedidos SET direccion = $1 WHERE id_pedido = $2', [direccionGPS, datosPedido.idPedido]);
+                const datosTemp = pedidosEsperandoDireccion.get(numeroCliente);
+                datosTemp.direccion = direccionGPS;
 
                 pedidosEsperandoDireccion.delete(numeroCliente);
-                pedidosEsperandoTurno.set(numeroCliente, datosPedido.idPedido);
+                pedidosEsperandoTurno.set(numeroCliente, datosTemp);
 
                 const datosReparto = obtenerDatosReparto();
-                const textoBotonFull = datosPedido.subtotal >= MINIMO_ENVIO_GRATIS ? "🚀 Full (GRATIS)" : `🚀 Full (+$${COSTO_FULL})`;
+                const textoBotonFull = datosTemp.subtotal >= MINIMO_ENVIO_GRATIS ? "🚀 Full (GRATIS)" : `🚀 Full (+$${COSTO_FULL})`;
                 const estadoFullLocal = obtenerDisponibilidadFullORetiro() ? "Disponible hasta las 23hs" : "Cerrado (Abre 07hs)";
 
                 const dataBotonesTurno = {
@@ -221,7 +223,6 @@ const recibirMensaje = async (req, res) => {
             if (pedidosEsperandoDireccion.has(numeroCliente)) {
                 let direccionMejorada = textoRecibido.trim();
                 
-                // 🛑 FILTRO DE SEGURIDAD PARA TEXTOS CORTOS
                 if (direccionMejorada.length < 5) {
                     await enviarMensaje(numeroCliente, "🛑 *Falta tu dirección.*\n\nLa dirección que ingresaste es demasiado corta. Es obligatorio que nos pases tu calle y número (Ej: Belgrano 1024) o envíes tu ubicación por GPS (📍) para poder entregar tu pedido.");
                     return res.sendStatus(200);
@@ -231,14 +232,14 @@ const recibirMensaje = async (req, res) => {
                     direccionMejorada = `${direccionMejorada}, Tres Lomas`;
                 }
 
-                const datosPedido = pedidosEsperandoDireccion.get(numeroCliente);
-                await pool.query('UPDATE pedidos SET direccion = $1 WHERE id_pedido = $2', [direccionMejorada, datosPedido.idPedido]);
+                const datosTemp = pedidosEsperandoDireccion.get(numeroCliente);
+                datosTemp.direccion = direccionMejorada;
 
                 pedidosEsperandoDireccion.delete(numeroCliente);
-                pedidosEsperandoTurno.set(numeroCliente, datosPedido.idPedido);
+                pedidosEsperandoTurno.set(numeroCliente, datosTemp);
 
                 const datosReparto = obtenerDatosReparto();
-                const textoBotonFull = datosPedido.subtotal >= MINIMO_ENVIO_GRATIS ? "🚀 Full (GRATIS)" : `🚀 Full (+$${COSTO_FULL})`;
+                const textoBotonFull = datosTemp.subtotal >= MINIMO_ENVIO_GRATIS ? "🚀 Full (GRATIS)" : `🚀 Full (+$${COSTO_FULL})`;
                 const estadoFullLocal = obtenerDisponibilidadFullORetiro() ? "Disponible hasta las 23hs" : "Cerrado (Abre 07hs)";
 
                 const dataBotonesTurno = {
@@ -329,7 +330,7 @@ const recibirMensaje = async (req, res) => {
             }
         }
 
-        // --- 4. RECEPCIÓN DEL CARRITO NATIVO ---
+        // --- 4. RECEPCIÓN DEL CARRITO NATIVO (ACÁ YA NO SE CREA EL PEDIDO EN BD) ---
         if (message.type === 'order') {
             const itemsCatalogo = message.order.product_items;
             try {
@@ -378,21 +379,15 @@ const recibirMensaje = async (req, res) => {
                 
                 const totalCarrito = subtotal;
 
-                // ESTADO FANTASMA: Se guarda como 'Incompleto' para no ensuciar tu panel hasta que pasen la dirección.
-                const resPedido = await pool.query(
-                    `INSERT INTO pedidos (whatsapp_id, estado, total_compra) VALUES ($1, $2, $3) RETURNING id_pedido`,
-                    [numeroCliente, 'Incompleto (Faltan Datos)', totalCarrito]
-                );
-                const idNuevoPedido = resPedido.rows[0].id_pedido;
+                // Guardamos los datos de forma temporal en memoria RAM hasta que el usuario termine todo el flujo
+                const datosTemporales = {
+                    subtotal: subtotal,
+                    total: totalCarrito,
+                    detalles: detallesParaInsertar
+                };
 
-                for (let detalle of detallesParaInsertar) {
-                    await pool.query(
-                        `INSERT INTO detalle_pedidos (id_pedido, id_producto, cantidad, precio_congelado) VALUES ($1, $2, $3, $4)`,
-                        [idNuevoPedido, detalle.id, detalle.cantidad, detalle.precio]
-                    );
-                }
-
-                pedidosEsperandoDireccion.set(numeroCliente, { idPedido: idNuevoPedido, subtotal: subtotal, total: totalCarrito });
+                carritosPendientes.set(numeroCliente, datosTemporales);
+                pedidosEsperandoDireccion.set(numeroCliente, datosTemporales);
                 
                 const dataOpcionesEntrega = {
                     messaging_product: "whatsapp",
@@ -507,18 +502,19 @@ const recibirMensaje = async (req, res) => {
 
             if (opcion === 'entrega_domicilio') {
                 if (!pedidosEsperandoDireccion.has(numeroCliente)) return await enviarMensaje(numeroCliente, "La sesión expiró, por favor reenviá tu carrito.");
-                await enviarMensaje(numeroCliente, "¡Perfecto! 🚚\n\nPara el envío, podés hacer dos cosas:\n1️⃣ *Escribirnos tu dirección* (Ej: Belgrano 1024)\n2️⃣ Tocar el 📎 (clip) abajo y enviarnos tu *Ubicación actual* de WhatsApp para mayor precisión.");
+                await enviarMensaje(numeroCliente, "¡Perfecto! 🚚\n\nPara el envío, podés hacer দুই cosas:\n1️⃣ *Escribirnos tu dirección* (Ej: Belgrano 1024)\n2️⃣ Tocar el 📎 (clip) abajo y enviarnos tu *Ubicación actual* de WhatsApp para mayor precisión.");
                 return res.sendStatus(200);
             }
 
             if (opcion === 'retiro_deposito') {
-                const datosPedido = pedidosEsperandoDireccion.get(numeroCliente);
-                if (!datosPedido) return await enviarMensaje(numeroCliente, "La sesión expiró, por favor reenviá tu carrito.");
+                const datosTemp = pedidosEsperandoDireccion.get(numeroCliente);
+                if (!datosTemp) return await enviarMensaje(numeroCliente, "La sesión expiró, por favor reenviá tu carrito.");
 
-                await pool.query('UPDATE pedidos SET direccion = $1, estado = $2 WHERE id_pedido = $3', ['Retiro en depósito (Mitre 1044)', 'Pendiente - Retiro', datosPedido.idPedido]);
+                datosTemp.direccion = 'Retiro en depósito (Mitre 1044)';
+                datosTemp.estadoBD = 'Pendiente - Retiro';
                 
                 pedidosEsperandoDireccion.delete(numeroCliente);
-                pedidosEsperandoPago.set(numeroCliente, datosPedido.idPedido);
+                pedidosEsperandoPago.set(numeroCliente, datosTemp);
 
                 const textoHorarioRetiro = obtenerDisponibilidadFullORetiro()
                     ? "Podés pasar a buscarlo ahora o hasta las 23:00 hs."
@@ -531,7 +527,7 @@ const recibirMensaje = async (req, res) => {
                     interactive: {
                         type: "list",
                         header: { type: "text", text: "Métodos de Pago" },
-                        body: { text: `¡Buenísimo! Vas a retirar por nuestro depósito en *Mitre 1044*. 🏪\n${textoHorarioRetiro}\n\nEl total de tu pedido es *$${datosPedido.total}*.\n\nElegí cómo preferís abonarlo:` },
+                        body: { text: `¡Buenísimo! Vas a retirar por nuestro depósito en *Mitre 1044*. 🏪\n${textoHorarioRetiro}\n\nEl total de tu pedido es *$${datosTemp.total}*.\n\nElegí cómo preferís abonarlo:` },
                         footer: { text: "Supercompra" },
                         action: {
                             button: "Elegir pago",
@@ -552,40 +548,28 @@ const recibirMensaje = async (req, res) => {
             }
 
             if (opcion === 'reparto_normal' || opcion === 'envio_full') {
-                const idPedidoAsociado = pedidosEsperandoTurno.get(numeroCliente);
-                if (!idPedidoAsociado) return await enviarMensaje(numeroCliente, "La sesión expiró, por favor reenviá tu carrito.");
+                const datosTemp = pedidosEsperandoTurno.get(numeroCliente);
+                if (!datosTemp) return await enviarMensaje(numeroCliente, "La sesión expiró, por favor reenviá tu carrito.");
 
-                const resTotalPrevio = await pool.query('SELECT total_compra FROM pedidos WHERE id_pedido = $1', [idPedidoAsociado]);
-                const subtotalActual = resTotalPrevio.rows[0].total_compra;
-
-                let nuevoEstado = '';
-                let recargoExtra = 0;
                 let textoConfirmacionHorario = '';
 
                 if (opcion === 'reparto_normal') {
                     const datosReparto = obtenerDatosReparto();
-                    nuevoEstado = datosReparto.estadoBD;
+                    datosTemp.estadoBD = datosReparto.estadoBD;
                     textoConfirmacionHorario = `Turno agendado para el reparto de la ${datosReparto.turno} (entre las ${datosReparto.horarioTexto}).`;
                 } else if (opcion === 'envio_full') {
-                    nuevoEstado = 'Pendiente - Full';
-                    if (subtotalActual < MINIMO_ENVIO_GRATIS) recargoExtra = COSTO_FULL; 
+                    datosTemp.estadoBD = 'Pendiente - Full';
+                    if (datosTemp.subtotal < MINIMO_ENVIO_GRATIS) {
+                        datosTemp.total = datosTemp.subtotal + COSTO_FULL;
+                    }
                     
                     textoConfirmacionHorario = obtenerDisponibilidadFullORetiro()
                         ? "🚀 Envío Full agendado. Te lo preparamos y mandamos enseguida."
                         : "🚀 Envío Full agendado. Te lo mandamos a primera hora apenas abramos a las 07:00 hs.";
                 }
 
-                if (recargoExtra > 0) {
-                    await pool.query('UPDATE pedidos SET estado = $1, total_compra = total_compra + $2 WHERE id_pedido = $3', [nuevoEstado, recargoExtra, idPedidoAsociado]);
-                } else {
-                    await pool.query('UPDATE pedidos SET estado = $1 WHERE id_pedido = $2', [nuevoEstado, idPedidoAsociado]);
-                }
-
-                const resTotalFinal = await pool.query('SELECT total_compra FROM pedidos WHERE id_pedido = $1', [idPedidoAsociado]);
-                const totalActualizado = resTotalFinal.rows[0].total_compra;
-
                 pedidosEsperandoTurno.delete(numeroCliente);
-                pedidosEsperandoPago.set(numeroCliente, idPedidoAsociado);
+                pedidosEsperandoPago.set(numeroCliente, datosTemp);
 
                 const dataMenuPago = {
                     messaging_product: "whatsapp",
@@ -594,7 +578,7 @@ const recibirMensaje = async (req, res) => {
                     interactive: {
                         type: "list",
                         header: { type: "text", text: "Métodos de Pago" },
-                        body: { text: `${textoConfirmacionHorario}\n\nEl total de tu pedido es *$${totalActualizado}*.\n\nElegí cómo preferís abonarlo:` },
+                        body: { text: `${textoConfirmacionHorario}\n\nEl total de tu pedido es *$${datosTemp.total}*.\n\nElegí cómo preferís abonarlo:` },
                         footer: { text: "Supercompra" },
                         action: {
                             button: "Elegir pago",
@@ -614,37 +598,52 @@ const recibirMensaje = async (req, res) => {
                 return res.sendStatus(200);
             }
 
+            // --- 6. PASO FINAL: SELECCIÓN DE PAGO E INSERCIÓN REAL EN BASE DE DATOS ---
             if (opcion === 'pago_transferencia' || opcion === 'pago_efectivo') {
-                const idPedidoAsociado = pedidosEsperandoPago.get(numeroCliente);
-                if (!idPedidoAsociado) return await enviarMensaje(numeroCliente, "Hubo un problema con tu sesión de pago.");
+                const datosTemp = pedidosEsperandoPago.get(numeroCliente);
+                if (!datosTemp) return await enviarMensaje(numeroCliente, "Hubo un problema con tu sesión de pago. Por favor reenviá tu carrito.");
 
-                const resPedido = await pool.query('SELECT total_compra FROM pedidos WHERE id_pedido = $1', [idPedidoAsociado]);
-                const totalCompra = resPedido.rows[0].total_compra;
+                // CREACIÓN OFICIAL DEL PEDIDO EN SUPABASE
+                const resPedido = await pool.query(
+                    `INSERT INTO pedidos (whatsapp_id, estado, total_compra, direccion) VALUES ($1, $2, $3, $4) RETURNING id_pedido`,
+                    [numeroCliente, datosTemp.estadoBD, datosTemp.total, datosTemp.direccion]
+                );
+                const idNuevoPedido = resPedido.rows[0].id_pedido;
+
+                // INSERCIÓN DE LOS PRODUCTOS DEL CARRITO
+                for (let detalle of datosTemp.detalles) {
+                    await pool.query(
+                        `INSERT INTO detalle_pedidos (id_pedido, id_producto, cantidad, precio_congelado) VALUES ($1, $2, $3, $4)`,
+                        [idNuevoPedido, detalle.id, detalle.cantidad, detalle.precio]
+                    );
+                }
 
                 if (opcion === 'pago_transferencia') {
                     await pool.query(
                         `INSERT INTO pagos (id_pedido, metodo, estado, monto) VALUES ($1, $2, $3, $4)`,
-                        [idPedidoAsociado, 'Transferencia', 'Pendiente de Verificación', totalCompra]
+                        [idNuevoPedido, 'Transferencia', 'Pendiente de Verificación', datosTemp.total]
                     );
+                    
                     pedidosEsperandoPago.delete(numeroCliente);
-                    pedidosEsperandoComprobante.set(numeroCliente, { idPedido: idPedidoAsociado, totalEsperado: totalCompra });
+                    carritosPendientes.delete(numeroCliente);
+                    pedidosEsperandoComprobante.set(numeroCliente, { idPedido: idNuevoPedido, totalEsperado: datosTemp.total });
                     
-                    // Mensaje con instrucciones
-                    await enviarMensaje(numeroCliente, `🏦 Elegiste abonar con Transferencia.\n\nPara confirmar tu pedido, por favor realizá una transferencia por el total de *$${totalCompra}*.\n\n👇 *Mantené presionado el CBU o el Alias abajo para copiarlo fácilmente:*`);
-                    
-                    // CBU y Alias aislados para copiado rápido
+                    await enviarMensaje(numeroCliente, `🏦 Elegiste abonar con Transferencia.\n\nPara confirmar tu pedido, por favor realizá una transferencia por el total de *$${datosTemp.total}*.\n\n👇 *Mantené presionado el CBU o el Alias abajo para copiarlo fácilmente:*`);
                     await enviarMensaje(numeroCliente, "0000003100010768128016");
                     await enviarMensaje(numeroCliente, "supercompras.3lo");
-
-                    // Pedido de comprobante final
                     await enviarMensaje(numeroCliente, "Una vez que hagas el pago, por favor *envianos la foto del comprobante* por este chat. 🧾✅");
 
                 } else if (opcion === 'pago_efectivo') {
-                    await pool.query(`INSERT INTO pagos (id_pedido, metodo, estado, monto) VALUES ($1, $2, $3, $4)`, [idPedidoAsociado, 'Efectivo', 'A Cobrar (Efectivo)', totalCompra]);
-                    await pool.query('UPDATE pedidos SET estado = $1 WHERE id_pedido = $2', ['En Preparación', idPedidoAsociado]);
+                    await pool.query(
+                        `INSERT INTO pagos (id_pedido, metodo, estado, monto) VALUES ($1, $2, $3, $4)`,
+                        [idNuevoPedido, 'Efectivo', 'A Cobrar (Efectivo)', datosTemp.total]
+                    );
+                    
                     pedidosEsperandoPago.delete(numeroCliente);
-                    await enviarMensaje(numeroCliente, `💵 Pedido registrado para pagar en efectivo ($${totalCompra}). ¡Ya lo estamos armando!`);
-                    await dispararEnvioFactura(idPedidoAsociado, numeroCliente);
+                    carritosPendientes.delete(numeroCliente);
+
+                    await enviarMensaje(numeroCliente, `💵 Pedido registrado para pagar en efectivo ($${datosTemp.total}). ¡Ya lo estamos armando!`);
+                    await dispararEnvioFactura(idNuevoPedido, numeroCliente);
                 }
                 return res.sendStatus(200);
             }
