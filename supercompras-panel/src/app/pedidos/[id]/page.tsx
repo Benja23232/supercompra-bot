@@ -12,7 +12,7 @@ export default function DetallePedido() {
   
   const [pedido, setPedido] = useState<any>(null);
   const [detalles, setDetalles] = useState<any[]>([]);
-  const [pago, setPago] = useState<any>(null); // NUEVO ESTADO: Para guardar los datos del pago
+  const [pago, setPago] = useState<any>(null); 
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -27,7 +27,7 @@ export default function DetallePedido() {
   useEffect(() => {
     async function fetchDetalleCompleto() {
       // 1. Traer el pedido
-      const { data: dataPedido, error: errorPedido } = await supabase
+      const { data: dataPedido } = await supabase
         .from('pedidos')
         .select('*')
         .eq('id_pedido', id)
@@ -35,8 +35,8 @@ export default function DetallePedido() {
 
       if (dataPedido) setPedido(dataPedido);
 
-      // 2. Traer los detalles
-      const { data: dataDetalles, error: errorDetalles } = await supabase
+      // 2. Traer los detalles de los productos
+      const { data: dataDetalles } = await supabase
         .from('detalle_pedidos')
         .select(`
           cantidad, 
@@ -48,12 +48,12 @@ export default function DetallePedido() {
 
       if (dataDetalles) setDetalles(dataDetalles);
       
-      // 3. Traer el método de pago
+      // 3. Traer los datos del pago (método, estado del comprobante, etc.)
       const { data: dataPago } = await supabase
         .from('pagos')
-        .select('metodo, estado')
+        .select('metodo, estado, monto')
         .eq('id_pedido', id)
-        .maybeSingle(); // Usamos maybeSingle para que no tire error si el pedido aún no tiene pago asociado
+        .maybeSingle(); 
 
       if (dataPago) setPago(dataPago);
       
@@ -74,14 +74,38 @@ export default function DetallePedido() {
   if (loading) return <p className="texto-cargando">Cargando detalles del pedido...</p>;
   if (!pedido) return <p className="texto-cargando">No se encontró el pedido.</p>;
 
+  // Identificador visual del turno para que Lucho sepa cuándo repartir
   const obtenerBadgeEnvio = (estado: string) => {
-    if (estado?.includes('Full')) return { texto: '🚀 ENVÍO FULL', fondo: '#f3e8ff', color: '#7e22ce', borde: '#d8b4fe' };
-    if (estado?.includes('Mañana')) return { texto: '☀️ TURNO MAÑANA', fondo: '#fef9c3', color: '#854d0e', borde: '#fde047' };
-    if (estado?.includes('Tarde')) return { texto: '🌙 TURNO TARDE', fondo: '#e0f2fe', color: '#0369a1', borde: '#7dd3fc' };
-    return { texto: '📦 ESTÁNDAR', fondo: '#f3f4f6', color: '#374151', borde: '#e5e7eb' };
+    if (estado?.includes('Full')) return { texto: '🚀 ENVÍO FULL (Rápido)', fondo: '#f3e8ff', color: '#7e22ce', borde: '#d8b4fe' };
+    if (estado?.includes('Mañana')) return { texto: '☀️ TURNO MAÑANA (09:30 - 11:00)', fondo: '#fef9c3', color: '#854d0e', borde: '#fde047' };
+    if (estado?.includes('Tarde')) return { texto: '🌙 TURNO TARDE (19:00 - 20:30)', fondo: '#e0f2fe', color: '#0369a1', borde: '#7dd3fc' };
+    if (estado?.includes('Retiro')) return { texto: '🏪 RETIRO EN LOCAL (Mitre 1044)', fondo: '#dcfce7', color: '#166534', borde: '#86efac' };
+    return { texto: '⚠️ FALTAN DATOS (Incompleto)', fondo: '#fee2e2', color: '#991b1b', borde: '#fca5a5' };
   };
 
   const badge = obtenerBadgeEnvio(pedido.estado);
+
+  // Función para darle color al estado del pago y que distingan transferencia de efectivo
+  const obtenerDetallePago = () => {
+    if (!pago) return <span style={{ color: '#fbbf24' }}>⏳ Pago no registrado todavía</span>;
+    
+    if (pago.metodo === 'Transferencia') {
+      const aprobado = pago.estado === 'Aprobado';
+      return (
+        <span>
+          🏦 <strong>Transferencia</strong> — <span style={{ color: aprobado ? '#4ade80' : '#f87171', fontWeight: 'bold' }}>
+            {aprobado ? '✅ Comprobante validado por IA' : '⚠️ Pendiente de revisión / Comprobante no validado'}
+          </span>
+        </span>
+      );
+    } else {
+      return (
+        <span>
+          💵 <strong>Efectivo</strong> — <span style={{ color: '#60a5fa', fontWeight: 'bold' }}>Pagá al recibir o retirar</span>
+        </span>
+      );
+    }
+  };
 
   return (
     <main className="contenedor-pagina" style={{ maxWidth: '800px', margin: '0 auto', padding: '20px' }}>
@@ -91,29 +115,28 @@ export default function DetallePedido() {
 
       <div className="encabezado-pagina" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
         <h1 className="titulo-pagina" style={{ fontSize: '1.8rem' }}>Detalle del Pedido #{String(pedido.id_pedido).slice(0, 8)}</h1>
-        <span style={{ backgroundColor: badge.fondo, color: badge.color, border: `1px solid ${badge.borde}`, padding: '6px 12px', borderRadius: '20px', fontWeight: 'bold', fontSize: '0.9rem' }}>
+        <span style={{ backgroundColor: badge.fondo, color: badge.color, border: `1px solid ${badge.borde}`, padding: '8px 14px', borderRadius: '20px', fontWeight: 'bold', fontSize: '0.95rem' }}>
           {badge.texto}
         </span>
       </div>
 
-      <div style={{ marginBottom: '20px', background: '#18181b', padding: '15px', borderRadius: '8px', border: '1px solid #3f3f46', color: '#fff' }}>
-        <p style={{ margin: '5px 0' }}><strong>Teléfono del cliente:</strong> +{pedido.whatsapp_id}</p>
-        <p style={{ margin: '5px 0' }}><strong>Dirección de entrega:</strong> {pedido.direccion || 'No especificada'}</p>
-        <p style={{ margin: '5px 0' }}><strong>Estado actual:</strong> {pedido.estado}</p>
-        <p style={{ margin: '5px 0', color: pago?.estado === 'Aprobado' ? '#4ade80' : '#fbbf24' }}>
-          <strong>Método de pago:</strong> {pago ? `${pago.metodo} (${pago.estado})` : 'No registrado'}
-        </p>
-        <p style={{ margin: '5px 0' }}><strong>Total abonado:</strong> ${pedido.total_compra}</p>
+      {/* CUADRO DE INFORMACIÓN CLAVE PARA EL REPARTO Y PAGO */}
+      <div style={{ marginBottom: '20px', background: '#18181b', padding: '20px', borderRadius: '8px', border: '1px solid #3f3f46', color: '#fff', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        <p style={{ margin: '0' }}><strong>📞 Teléfono del cliente:</strong> +{pedido.whatsapp_id}</p>
+        <p style={{ margin: '0' }}><strong>📍 Dirección de entrega:</strong> {pedido.direccion || 'No especificada'}</p>
+        <p style={{ margin: '0' }}><strong>📋 Estado interno:</strong> {pedido.estado}</p>
+        <p style={{ margin: '0' }}><strong>💳 Método de pago:</strong> {obtenerDetallePago()}</p>
+        <p style={{ margin: '0', fontSize: '1.1rem', marginTop: '5px' }}><strong>💰 Total abonado:</strong> <span style={{ color: '#4ade80' }}>${pedido.total_compra}</span></p>
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px' }}>
-        <h2>Productos del Pedido (Solo Lectura):</h2>
+        <h2>Productos del Pedido:</h2>
       </div>
 
       <div className="contenedor-tabla" style={{ marginTop: '10px', marginBottom: '20px' }}>
         <table className="tabla-datos" style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
-            <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
+            <tr style={{ borderBottom: '2px solid #3f3f46' }}>
               <th className="texto-izq" style={{ textAlign: 'left', padding: '10px' }}>Producto</th>
               <th className="texto-centro" style={{ textAlign: 'center', padding: '10px' }}>Cantidad</th>
               <th className="texto-centro" style={{ textAlign: 'center', padding: '10px' }}>Estado de Armado</th>
@@ -122,7 +145,7 @@ export default function DetallePedido() {
           <tbody>
             {detalles.map((item, index) => {
               return (
-                <tr key={index} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                <tr key={index} style={{ borderBottom: '1px solid #27272a' }}>
                   <td className="font-fuerte" style={{ padding: '10px', color: '#fdfcfc' }}>
                     {item.productos?.nombre || 'Producto desconocido'}
                   </td>
@@ -130,7 +153,7 @@ export default function DetallePedido() {
                     <strong style={{ fontSize: '1.1rem' }}>{item.cantidad}</strong>
                   </td>
                   <td className="texto-centro" style={{ textAlign: 'center', padding: '10px' }}>
-                    <span style={{ backgroundColor: '#f3f4f6', padding: '4px 10px', borderRadius: '12px', fontSize: '0.85rem', color: '#4b5563', fontWeight: 'bold' }}>
+                    <span style={{ backgroundColor: '#27272a', padding: '4px 10px', borderRadius: '12px', fontSize: '0.85rem', color: '#d4d4d8', fontWeight: 'bold' }}>
                       📋 Pendiente en depósito
                     </span>
                   </td>
