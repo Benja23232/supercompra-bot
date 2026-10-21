@@ -113,7 +113,7 @@ export default function DetallePedido() {
                   <td className="font-fuerte" style={{ padding: '10px', color: '#000' }}>
                     {item.productos?.nombre || 'Producto desconocido'}
                   </td>
-                  <td className="texto-centro" style={{ textAlign: 'center', padding: '10px', color: '#000' }}>
+                  <td className="texto-centro" style={{ textAlign: 'center', padding: '10px', color: '#f8f8f8' }}>
                     <strong style={{ fontSize: '1.1rem' }}>{item.cantidad}</strong>
                   </td>
                   <td className="texto-centro" style={{ textAlign: 'center', padding: '10px' }}>
