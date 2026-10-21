@@ -110,7 +110,7 @@ export default function DetallePedido() {
               // Por defecto se muestra informativo de solo lectura
               return (
                 <tr key={index} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                  <td className="font-fuerte" style={{ padding: '10px', color: '#000' }}>
+                  <td className="font-fuerte" style={{ padding: '10px', color: '#fdfcfc' }}>
                     {item.productos?.nombre || 'Producto desconocido'}
                   </td>
                   <td className="texto-centro" style={{ textAlign: 'center', padding: '10px', color: '#f8f8f8' }}>
