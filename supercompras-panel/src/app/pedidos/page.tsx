@@ -20,6 +20,30 @@ export default function Pedidos() {
   const [pedidosSeleccionados, setPedidosSeleccionados] = useState<any[]>([]);
   const [estadoMasivo, setEstadoMasivo] = useState('En Preparación');
 
+  // --- FUNCIÓN DE ALERTA DE AUDIO (Web Audio API) ---
+  const reproducirSonidoAlerta = () => {
+    try {
+      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(587.33, audioCtx.currentTime); // Nota Re5
+      osc.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.15); // Sube a La5
+
+      gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
+
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.4);
+    } catch (e) {
+      console.error("El navegador bloqueó el audio automático:", e);
+    }
+  };
+
   async function fetchPedidos() {
     const { data, error } = await supabase
       .from('pedidos')
@@ -50,6 +74,7 @@ export default function Pedidos() {
         (payload) => {
           if (payload.eventType === 'INSERT') {
             setAlertaNuevoPedido(true);
+            reproducirSonidoAlerta(); // 🔔 Suena el alerta sonora al instante
             setTimeout(() => setAlertaNuevoPedido(false), 6000);
           }
           fetchPedidos();
@@ -71,7 +96,6 @@ export default function Pedidos() {
     return true;
   });
 
-  // --- CORRECCIÓN: SE AGREGÓ 'Armado' A LA LISTA DE EN PROCESO ---
   const pedidosPendientes = pedidosPorTurno.filter(p => !p.estado || p.estado.includes('Pendiente'));
   const pedidosEnProceso = pedidosPorTurno.filter(p => 
     p.estado?.includes('En Preparación') || 
@@ -85,7 +109,6 @@ export default function Pedidos() {
   const cambiarEstado = async (id: any, nuevoEstadoElegido: string, estadoAnterior: string) => {
     let estadoFinal = nuevoEstadoElegido;
 
-    // --- CORRECCIÓN: SE SUMÓ 'Armado' AL ARRAY DE VALIDACIÓN ---
     if (['Pendiente', 'En Preparación', 'Armado', 'En Reparto', 'Entregado', 'Cancelado'].includes(nuevoEstadoElegido)) {
       if (estadoAnterior.includes('Mañana')) estadoFinal = `${nuevoEstadoElegido} - Mañana`;
       else if (estadoAnterior.includes('Tarde')) estadoFinal = `${nuevoEstadoElegido} - Tarde`;
@@ -250,7 +273,6 @@ export default function Pedidos() {
             const estadoActual = pedido.estado || 'Pendiente';
             const estaSeleccionado = pedidosSeleccionados.includes(pedido.id_pedido);
 
-            // --- CORRECCIÓN: MAPEO DE 'Armado' EN EL SELECT ---
             let valorSelect = estadoActual;
             if (estadoActual.includes('En Preparación') || estadoActual.includes('En Preparacion') || estadoActual.includes('En Proceso')) valorSelect = 'En Preparación';
             else if (estadoActual.includes('Armado')) valorSelect = 'Armado';
@@ -357,7 +379,6 @@ export default function Pedidos() {
                     <option value="Pendiente - Tarde">Pendiente - Tarde</option>
                     <option value="Pendiente - Full">🚀 Pendiente - Full</option>
                     <option value="En Preparación">⚙️ En Preparación</option>
-                    {/* --- CORRECCIÓN: NUEVA OPCIÓN VISUAL PARA EL ESTADO ARMADO --- */}
                     <option value="Armado">📦 Armado (Listo)</option>
                     <option value="En Reparto">🛵 En Reparto</option>
                     <option value="Entregado">Entregado</option>
