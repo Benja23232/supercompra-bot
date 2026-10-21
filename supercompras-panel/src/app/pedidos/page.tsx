@@ -71,12 +71,13 @@ export default function Pedidos() {
     return true;
   });
 
-  // Clasificación por etapas
+  // --- CORRECCIÓN: SE AGREGÓ 'Armado' A LA LISTA DE EN PROCESO ---
   const pedidosPendientes = pedidosPorTurno.filter(p => !p.estado || p.estado.includes('Pendiente'));
   const pedidosEnProceso = pedidosPorTurno.filter(p => 
     p.estado?.includes('En Preparación') || 
     p.estado?.includes('En Preparacion') || 
-    p.estado?.includes('En Proceso')
+    p.estado?.includes('En Proceso') ||
+    p.estado?.includes('Armado') 
   );
   const pedidosEnReparto = pedidosPorTurno.filter(p => p.estado?.includes('En Reparto'));
   const pedidosFinalizados = pedidosPorTurno.filter(p => p.estado?.includes('Entregado') || p.estado?.includes('Cancelado'));
@@ -84,7 +85,8 @@ export default function Pedidos() {
   const cambiarEstado = async (id: any, nuevoEstadoElegido: string, estadoAnterior: string) => {
     let estadoFinal = nuevoEstadoElegido;
 
-    if (['Pendiente', 'En Preparación', 'En Reparto', 'Entregado', 'Cancelado'].includes(nuevoEstadoElegido)) {
+    // --- CORRECCIÓN: SE SUMÓ 'Armado' AL ARRAY DE VALIDACIÓN ---
+    if (['Pendiente', 'En Preparación', 'Armado', 'En Reparto', 'Entregado', 'Cancelado'].includes(nuevoEstadoElegido)) {
       if (estadoAnterior.includes('Mañana')) estadoFinal = `${nuevoEstadoElegido} - Mañana`;
       else if (estadoAnterior.includes('Tarde')) estadoFinal = `${nuevoEstadoElegido} - Tarde`;
       else if (estadoAnterior.includes('Full')) estadoFinal = `${nuevoEstadoElegido} - Full`;
@@ -248,8 +250,10 @@ export default function Pedidos() {
             const estadoActual = pedido.estado || 'Pendiente';
             const estaSeleccionado = pedidosSeleccionados.includes(pedido.id_pedido);
 
+            // --- CORRECCIÓN: MAPEO DE 'Armado' EN EL SELECT ---
             let valorSelect = estadoActual;
             if (estadoActual.includes('En Preparación') || estadoActual.includes('En Preparacion') || estadoActual.includes('En Proceso')) valorSelect = 'En Preparación';
+            else if (estadoActual.includes('Armado')) valorSelect = 'Armado';
             else if (estadoActual.includes('En Reparto')) valorSelect = 'En Reparto';
             else if (estadoActual.includes('Entregado')) valorSelect = 'Entregado';
             else if (estadoActual.includes('Cancelado')) valorSelect = 'Cancelado';
@@ -353,6 +357,8 @@ export default function Pedidos() {
                     <option value="Pendiente - Tarde">Pendiente - Tarde</option>
                     <option value="Pendiente - Full">🚀 Pendiente - Full</option>
                     <option value="En Preparación">⚙️ En Preparación</option>
+                    {/* --- CORRECCIÓN: NUEVA OPCIÓN VISUAL PARA EL ESTADO ARMADO --- */}
+                    <option value="Armado">📦 Armado (Listo)</option>
                     <option value="En Reparto">🛵 En Reparto</option>
                     <option value="Entregado">Entregado</option>
                     <option value="Cancelado">Cancelado</option>
@@ -507,7 +513,7 @@ export default function Pedidos() {
         ) : (
           <div style={{ width: '100%' }}>
             {renderSeccionPedidos(pedidosPendientes, '⏳ Cola de Espera (Pendientes)', 'Pedidos ingresados esperando que un empleado los busque en las estanterías.')}
-            {renderSeccionPedidos(pedidosEnProceso, '⚙️ En Armado / Listos', 'Pedidos que ya pasaron a preparación y están en curso.')}
+            {renderSeccionPedidos(pedidosEnProceso, '⚙️ En Armado / Listos', 'Pedidos que ya pasaron a preparación y están en curso o armados listos para salir.')}
             {renderSeccionPedidos(pedidosEnReparto, '🛵 En Reparto (En Camino)', 'Pedidos que ya salieron con el repartidor hacia el domicilio.')}
             {renderSeccionPedidos(pedidosFinalizados, '📦 Historial Terminado', 'Pedidos ya entregados al cliente o cancelados.')}
           </div>
