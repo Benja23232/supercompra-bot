@@ -38,8 +38,11 @@ function obtenerDisponibilidadFullORetiro() {
 // --- FUNCIONES AUXILIARES DE NAVEGACIÓN ---
 async function enviarMenuRubros(numeroCliente) {
     try {
+        console.log(`🔍 [1/3] Buscando rubros en la BD para ${numeroCliente}...`);
         const resRubros = await pool.query("SELECT DISTINCT rubro FROM productos WHERE stock_fisico > 0 AND rubro IS NOT NULL AND TRIM(rubro) <> '' ORDER BY rubro ASC");
         
+        console.log(`✅ [2/3] BD respondió. Rubros encontrados: ${resRubros.rows.length}`);
+
         if (resRubros.rows.length > 0) {
             const rowsRubros = resRubros.rows.map(row => ({
                 id: `rubro_${row.rubro.trim().substring(0, 20)}`, 
@@ -64,12 +67,15 @@ async function enviarMenuRubros(numeroCliente) {
                     }
                 }
             };
+            
+            console.log("📤 [3/3] Enviando petición a Meta para mostrar el menú...");
             await axios.post(`https://graph.facebook.com/v17.0/${process.env.WHATSAPP_PHONE_ID}/messages`, dataMenuRubros, { headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` } });
+            console.log("🚀 ¡Menú enviado exitosamente!");
         } else {
              await enviarMensaje(numeroCliente, "¡Hola! 👋 Bienvenido a Supercompra.\n\nEn este momento estamos reponiendo stock. ¡Volvé a consultarnos más tarde!");
         }
     } catch (error) {
-        console.error("Error armando menú de rubros:", error.response?.data || error.message);
+        console.error("❌ Error CRÍTICO en enviarMenuRubros:", error.response?.data || error.message);
         await enviarMensaje(numeroCliente, "¡Hola! 👋 Bienvenido a Supercompra.\n\nEn este momento estamos reponiendo stock. ¡Volvé a consultarnos más tarde!");
     }
 }
@@ -99,7 +105,7 @@ async function enviarMenuCategorias(numeroCliente, rubro) {
                         }]
                     }
                 }
-            };
+            }
             await axios.post(`https://graph.facebook.com/v17.0/${process.env.WHATSAPP_PHONE_ID}/messages`, dataMenuCategorias, { headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` } });
         } else {
             await enviarMensaje(numeroCliente, "No hay stock en este rubro por el momento.");
@@ -164,17 +170,16 @@ const verificarToken = (req, res) => {
 
 const recibirMensaje = async (req, res) => {
     try {
-        console.log("🔥 Entró a recibirMensaje"); // Log de rastreo
+        console.log("🔥 Entró a recibirMensaje"); 
 
         const message = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
         
-        // Si no hay mensaje (puede ser una confirmación de lectura o entrega), cortamos acá
         if (!message) {
             console.log("🛑 Abortado: No hay mensaje en el body.");
             return res.sendStatus(200);
         }
 
-        console.log(`💬 Mensaje recibido de ${message.from}: Tipo [${message.type}]`); // Log de rastreo
+        console.log(`💬 Mensaje recibido de ${message.from}: Tipo [${message.type}]`); 
 
         if (mensajesProcesados.has(message.id)) {
             console.log("♻️ Abortado: Mensaje duplicado.");
@@ -185,7 +190,7 @@ const recibirMensaje = async (req, res) => {
 
         let numeroCliente = message.from.startsWith("549") ? message.from.replace("549", "54") : message.from;
 
-        // 🛑 BLOQUEO ESTRICTO: Si está esperando dirección y manda audio, sticker u otro formato no válido
+        // 🛑 BLOQUEO ESTRICTO: Si está esperando dirección y manda algo no válido
         if (pedidosEsperandoDireccion.has(numeroCliente) && message.type !== 'text' && message.type !== 'location' && message.type !== 'interactive' && message.type !== 'order') {
             await enviarMensaje(numeroCliente, "🛑 *Falta tu dirección.*\n\nNo podemos procesar audios ni stickers en este paso. Por favor, escribí tu calle y número con texto, o envianos tu ubicación GPS (📍) para poder avanzar con la compra.");
             return res.sendStatus(200);
@@ -328,11 +333,9 @@ const recibirMensaje = async (req, res) => {
                         await pool.query('UPDATE pedidos SET estado = $1 WHERE id_pedido = $2', ['En Preparación', datosPago.idPedido]);
                         pedidosEsperandoComprobante.delete(numeroCliente);
                         
-                        // FIX: Sintaxis de template literal corregida
                         await enviarMensaje(numeroCliente, `✅ ¡Pago validado con éxito!\n\nImporte de *$${montoConPuntoMiles}* confirmado. ¡Pedido en preparación!`);
                         await dispararEnvioFactura(datosPago.idPedido, numeroCliente);
                     } else {
-                        // FIX: Sintaxis de template literal corregida
                         await enviarMensaje(numeroCliente, `⚠️ No pude validar automáticamente el monto exacto de *$${montoConPuntoMiles}* en la foto. Un asesor lo revisará a la brevedad.`);
                         pedidosEsperandoComprobante.delete(numeroCliente);
                     }
@@ -345,7 +348,7 @@ const recibirMensaje = async (req, res) => {
             }
         }
 
-        // --- 4. RECEPCIÓN DEL CARRITO NATIVO (ACÁ YA NO SE CREA EL PEDIDO EN BD) ---
+        // --- 4. RECEPCIÓN DEL CARRITO NATIVO ---
         if (message.type === 'order') {
             const itemsCatalogo = message.order.product_items;
             try {
