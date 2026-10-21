@@ -48,7 +48,7 @@ export default function DetallePedido() {
 
       if (dataDetalles) setDetalles(dataDetalles);
       
-      // 3. Traer los datos del pago (método, estado del comprobante, etc.)
+      // 3. Traer los datos del pago
       const { data: dataPago } = await supabase
         .from('pagos')
         .select('metodo, estado, monto')
@@ -74,18 +74,18 @@ export default function DetallePedido() {
   if (loading) return <p className="texto-cargando">Cargando detalles del pedido...</p>;
   if (!pedido) return <p className="texto-cargando">No se encontró el pedido.</p>;
 
-  // Identificador visual del turno para que Lucho sepa cuándo repartir
+  // Identificador visual exacto del turno de reparto o modalidad
   const obtenerBadgeEnvio = (estado: string) => {
     if (estado?.includes('Full')) return { texto: '🚀 ENVÍO FULL (Rápido)', fondo: '#f3e8ff', color: '#7e22ce', borde: '#d8b4fe' };
-    if (estado?.includes('Mañana')) return { texto: '☀️ TURNO MAÑANA (09:30 - 11:00)', fondo: '#fef9c3', color: '#854d0e', borde: '#fde047' };
-    if (estado?.includes('Tarde')) return { texto: '🌙 TURNO TARDE (19:00 - 20:30)', fondo: '#e0f2fe', color: '#0369a1', borde: '#7dd3fc' };
+    if (estado?.includes('Mañana')) return { texto: '☀️ TURNO MAÑANA (09:30 a 11:00 hs)', fondo: '#fef9c3', color: '#854d0e', borde: '#fde047' };
+    if (estado?.includes('Tarde')) return { texto: '🌙 TURNO TARDE (19:00 a 20:30 hs)', fondo: '#e0f2fe', color: '#0369a1', borde: '#7dd3fc' };
     if (estado?.includes('Retiro')) return { texto: '🏪 RETIRO EN LOCAL (Mitre 1044)', fondo: '#dcfce7', color: '#166534', borde: '#86efac' };
     return { texto: '⚠️ FALTAN DATOS (Incompleto)', fondo: '#fee2e2', color: '#991b1b', borde: '#fca5a5' };
   };
 
   const badge = obtenerBadgeEnvio(pedido.estado);
 
-  // Función para darle color al estado del pago y que distingan transferencia de efectivo
+  // Función para desglosar el método de pago y el estado del comprobante
   const obtenerDetallePago = () => {
     if (!pago) return <span style={{ color: '#fbbf24' }}>⏳ Pago no registrado todavía</span>;
     
@@ -120,11 +120,13 @@ export default function DetallePedido() {
         </span>
       </div>
 
-      {/* CUADRO DE INFORMACIÓN CLAVE PARA EL REPARTO Y PAGO */}
-      <div style={{ marginBottom: '20px', background: '#18181b', padding: '20px', borderRadius: '8px', border: '1px solid #3f3f46', color: '#fff', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+      {/* CUADRO DE INFORMACIÓN CLAVE: TURNO, PAGO Y DIRECCIÓN */}
+      <div style={{ marginBottom: '20px', background: '#18181b', padding: '20px', borderRadius: '8px', border: '1px solid #3f3f46', color: '#fff', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        <p style={{ margin: '0', fontSize: '1.05rem' }}>
+          🚚 <strong>Turno / Modalidad de Entrega:</strong> <span style={{ color: '#38bdf8', fontWeight: 'bold' }}>{pedido.estado}</span>
+        </p>
         <p style={{ margin: '0' }}><strong>📞 Teléfono del cliente:</strong> +{pedido.whatsapp_id}</p>
         <p style={{ margin: '0' }}><strong>📍 Dirección de entrega:</strong> {pedido.direccion || 'No especificada'}</p>
-        <p style={{ margin: '0' }}><strong>📋 Estado interno:</strong> {pedido.estado}</p>
         <p style={{ margin: '0' }}><strong>💳 Método de pago:</strong> {obtenerDetallePago()}</p>
         <p style={{ margin: '0', fontSize: '1.1rem', marginTop: '5px' }}><strong>💰 Total abonado:</strong> <span style={{ color: '#4ade80' }}>${pedido.total_compra}</span></p>
       </div>
