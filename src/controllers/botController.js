@@ -15,6 +15,27 @@ const mensajesProcesados = new Set();
 const COSTO_FULL = 1500;
 const MINIMO_ENVIO_GRATIS = 40000;
 
+// --- LÓGICA INTELIGENTE DE HORARIOS ---
+function obtenerDatosReparto() {
+    const ahora = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Argentina/Buenos_Aires" }));
+    const horaDecimal = ahora.getHours() + (ahora.getMinutes() / 60);
+
+    // Si es después de las 19:00 o antes de las 09:30
+    if (horaDecimal >= 19 || horaDecimal < 9.5) {
+        return { turno: 'Mañana', horarioTexto: '09:30 a 11:00 hs', estadoBD: 'Pendiente - Mañana' };
+    } else {
+        // Si es entre las 09:30 y las 19:00
+        return { turno: 'Tarde', horarioTexto: '19:00 a 20:30 hs', estadoBD: 'Pendiente - Tarde' };
+    }
+}
+
+function obtenerDisponibilidadFullORetiro() {
+    const ahora = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Argentina/Buenos_Aires" }));
+    const horaDecimal = ahora.getHours() + (ahora.getMinutes() / 60);
+    // Retiro y Envío Full disponibles de 07:00 a 23:00
+    return (horaDecimal >= 7 && horaDecimal < 23);
+}
+
 // --- FUNCIONES AUXILIARES DE NAVEGACIÓN ---
 
 async function enviarMenuRubros(numeroCliente) {
@@ -168,7 +189,9 @@ const recibirMensaje = async (req, res) => {
                 pedidosEsperandoDireccion.delete(numeroCliente);
                 pedidosEsperandoTurno.set(numeroCliente, datosPedido.idPedido);
 
+                const datosReparto = obtenerDatosReparto();
                 const textoBotonFull = datosPedido.subtotal >= MINIMO_ENVIO_GRATIS ? "🚀 Full (GRATIS)" : `🚀 Full (+$${COSTO_FULL})`;
+                const estadoFullLocal = obtenerDisponibilidadFullORetiro() ? "Disponible hasta las 23hs" : "Cerrado (Abre 07hs)";
 
                 const dataBotonesTurno = {
                     messaging_product: "whatsapp",
@@ -176,11 +199,10 @@ const recibirMensaje = async (req, res) => {
                     type: "interactive",
                     interactive: {
                         type: "button",
-                        body: { text: `📍 ¡Ubicación GPS guardada!\n\nSubtotal: $${datosPedido.subtotal}\nEnvío Mañana/Tarde: ¡GRATIS! 🎁\n\n¿En qué turno preferís la entrega?` },
+                        body: { text: `📍 ¡Ubicación GPS guardada!\n\n🚚 *Reparto (Gratis):* Se entregará de ${datosReparto.horarioTexto}.\n🚀 *Full:* ${estadoFullLocal}.\n\n¿Qué tipo de envío preferís?` },
                         action: {
                             buttons: [
-                                { type: "reply", reply: { id: "entrega_manana", title: "☀️ Mañana" } },
-                                { type: "reply", reply: { id: "entrega_tarde", title: "🌙 Tarde" } },
+                                { type: "reply", reply: { id: "reparto_normal", title: "🚚 Reparto Normal" } },
                                 { type: "reply", reply: { id: "envio_full", title: textoBotonFull } }
                             ]
                         }
@@ -208,7 +230,9 @@ const recibirMensaje = async (req, res) => {
                 pedidosEsperandoDireccion.delete(numeroCliente);
                 pedidosEsperandoTurno.set(numeroCliente, datosPedido.idPedido);
 
+                const datosReparto = obtenerDatosReparto();
                 const textoBotonFull = datosPedido.subtotal >= MINIMO_ENVIO_GRATIS ? "🚀 Full (GRATIS)" : `🚀 Full (+$${COSTO_FULL})`;
+                const estadoFullLocal = obtenerDisponibilidadFullORetiro() ? "Disponible hasta las 23hs" : "Cerrado (Abre 07hs)";
 
                 const dataBotonesTurno = {
                     messaging_product: "whatsapp",
@@ -216,11 +240,10 @@ const recibirMensaje = async (req, res) => {
                     type: "interactive",
                     interactive: {
                         type: "button",
-                        body: { text: `📍 ¡Dirección guardada! (${direccionMejorada})\n\nSubtotal: $${datosPedido.subtotal}\nEnvío Mañana/Tarde: ¡GRATIS! 🎁\n\n¿En qué turno preferís la entrega?` },
+                        body: { text: `📍 ¡Dirección guardada! (${direccionMejorada})\n\n🚚 *Reparto (Gratis):* Se entregará de ${datosReparto.horarioTexto}.\n🚀 *Full:* ${estadoFullLocal}.\n\n¿Qué tipo de envío preferís?` },
                         action: {
                             buttons: [
-                                { type: "reply", reply: { id: "entrega_manana", title: "☀️ Mañana" } },
-                                { type: "reply", reply: { id: "entrega_tarde", title: "🌙 Tarde" } },
+                                { type: "reply", reply: { id: "reparto_normal", title: "🚚 Reparto Normal" } },
                                 { type: "reply", reply: { id: "envio_full", title: textoBotonFull } }
                             ]
                         }
@@ -404,9 +427,7 @@ const recibirMensaje = async (req, res) => {
             if (opcion.startsWith('cat_')) {
                 const categoriaElegida = opcion.replace('cat_', '');
 
-                // 🍷 FILTRO EXCLUSIVO PARA BEBIDAS CON ALCOHOL (DERIVA AL SEGUNDO NÚMERO Y WEB)
                 if (categoriaElegida.toLowerCase().includes('alcohol') || categoriaElegida.toLowerCase().includes('bebidas con alcohol')) {
-                    
                     const dataImagenBebidas = {
                         messaging_product: "whatsapp",
                         to: numeroCliente,
@@ -414,26 +435,16 @@ const recibirMensaje = async (req, res) => {
                         image: {
                             link: "https://ntungxnymcijfxueucoz.supabase.co/storage/v1/object/public/catalogo/catalogo.jpeg",
                             caption: "🍷 *Catálogo de Bebidas con Alcohol*\n\n" +
-                                     "¡Hola! Mirá nuestro catálogo visual de bebidas.\n\n" +
-                                     "1️⃣ *Armá tu pedido online con stock en tiempo real:* \n" +
-                                     "🔗 https://supercompra-bot.vercel.app/bebidas\n\n" +
-                                     "2️⃣ *¿Preferís encargarlo directo por WhatsApp con un asesor?* \n" +
-                                     "👉 Hacé clic en el siguiente enlace para escribirle al segundo número:\n" +
+                                     "¡Hola! Mirá nuestro catálogo visual en la imagen de arriba.\n\n" +
+                                     "👉 *Para pedir bebidas, escribile directo a nuestro asesor haciendo clic acá:*\n" +
                                      "https://api.whatsapp.com/send?phone=5492392689864&text=¡Hola!%20Quiero%20pedir%20una%20bebida%20por%20acá"
                         }
                     };
-
                     try {
-                        await axios.post(
-                            `https://graph.facebook.com/v17.0/${process.env.WHATSAPP_PHONE_ID}/messages`, 
-                            dataImagenBebidas, 
-                            { headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` } }
-                        );
+                        await axios.post(`https://graph.facebook.com/v17.0/${process.env.WHATSAPP_PHONE_ID}/messages`, dataImagenBebidas, { headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` } });
                     } catch (errorFlyer) {
-                        console.error("Error enviando flyer de bebidas:", errorFlyer.response?.data || errorFlyer.message);
-                        await enviarMensaje(numeroCliente, "🍷 *Catálogo de Bebidas*\n\nMirá nuestras bebidas online: https://supercompra-bot.vercel.app/bebidas");
+                        await enviarMensaje(numeroCliente, "🍷 *Catálogo de Bebidas*\n\nPara hacer tu pedido, escribile directo a nuestro asesor acá:\nhttps://api.whatsapp.com/send?phone=5492392689864&text=¡Hola!%20Quiero%20pedir%20una%20bebida%20por%20acá");
                     }
-
                     return res.sendStatus(200);
                 }
 
@@ -501,6 +512,10 @@ const recibirMensaje = async (req, res) => {
                 pedidosEsperandoDireccion.delete(numeroCliente);
                 pedidosEsperandoPago.set(numeroCliente, datosPedido.idPedido);
 
+                const textoHorarioRetiro = obtenerDisponibilidadFullORetiro()
+                    ? "Podés pasar a buscarlo ahora o hasta las 23:00 hs."
+                    : "Te recordamos que abrimos a partir de las 07:00 hs.";
+
                 const dataMenuPago = {
                     messaging_product: "whatsapp",
                     to: numeroCliente,
@@ -508,7 +523,7 @@ const recibirMensaje = async (req, res) => {
                     interactive: {
                         type: "list",
                         header: { type: "text", text: "Métodos de Pago" },
-                        body: { text: `¡Buenísimo! Vas a retirar por nuestro depósito en *Mitre 1044*. 🏪\n\nEl total de tu pedido es *$${datosPedido.total}*.\n\nElegí cómo preferís abonarlo:` },
+                        body: { text: `¡Buenísimo! Vas a retirar por nuestro depósito en *Mitre 1044*. 🏪\n${textoHorarioRetiro}\n\nEl total de tu pedido es *$${datosPedido.total}*.\n\nElegí cómo preferís abonarlo:` },
                         footer: { text: "Supercompra" },
                         action: {
                             button: "Elegir pago",
@@ -528,7 +543,7 @@ const recibirMensaje = async (req, res) => {
                 return res.sendStatus(200);
             }
 
-            if (opcion === 'entrega_manana' || opcion === 'entrega_tarde' || opcion === 'envio_full') {
+            if (opcion === 'reparto_normal' || opcion === 'envio_full') {
                 const idPedidoAsociado = pedidosEsperandoTurno.get(numeroCliente);
                 if (!idPedidoAsociado) return await enviarMensaje(numeroCliente, "La sesión expiró, por favor reenviá tu carrito.");
 
@@ -537,12 +552,19 @@ const recibirMensaje = async (req, res) => {
 
                 let nuevoEstado = '';
                 let recargoExtra = 0;
+                let textoConfirmacionHorario = '';
 
-                if (opcion === 'entrega_manana') nuevoEstado = 'Pendiente - Mañana';
-                else if (opcion === 'entrega_tarde') nuevoEstado = 'Pendiente - Tarde';
-                else if (opcion === 'envio_full') {
+                if (opcion === 'reparto_normal') {
+                    const datosReparto = obtenerDatosReparto();
+                    nuevoEstado = datosReparto.estadoBD;
+                    textoConfirmacionHorario = `Turno agendado para el reparto de la ${datosReparto.turno} (entre las ${datosReparto.horarioTexto}).`;
+                } else if (opcion === 'envio_full') {
                     nuevoEstado = 'Pendiente - Full';
                     if (subtotalActual < MINIMO_ENVIO_GRATIS) recargoExtra = COSTO_FULL; 
+                    
+                    textoConfirmacionHorario = obtenerDisponibilidadFullORetiro()
+                        ? "🚀 Envío Full agendado. Te lo preparamos y mandamos enseguida."
+                        : "🚀 Envío Full agendado. Te lo mandamos a primera hora apenas abramos a las 07:00 hs.";
                 }
 
                 if (recargoExtra > 0) {
@@ -564,7 +586,7 @@ const recibirMensaje = async (req, res) => {
                     interactive: {
                         type: "list",
                         header: { type: "text", text: "Métodos de Pago" },
-                        body: { text: `Turno agendado. El total de tu pedido es *$${totalActualizado}*.\n\nElegí cómo preferís abonarlo:` },
+                        body: { text: `${textoConfirmacionHorario}\n\nEl total de tu pedido es *$${totalActualizado}*.\n\nElegí cómo preferís abonarlo:` },
                         footer: { text: "Supercompra" },
                         action: {
                             button: "Elegir pago",

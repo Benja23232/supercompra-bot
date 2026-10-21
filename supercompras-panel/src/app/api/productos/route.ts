@@ -1,30 +1,18 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 
-// URL pública de tu botella personalizada subida a Supabase Storage
+// URL pública de tu botella genérica
 const URL_BOTELLA_SUPERCOMPRAS = 'https://ntungxnymcijfxueucoz.supabase.co/storage/v1/object/public/productos/botella_vidrio_supercompras_sin_etiqueta.png';
 
-// --- FUNCIÓN ANTIBLOQUEO Y CAMUFLAJE PARA META ---
-function camuflarParaMeta(nombre: string, categoria: string, urlImagen: string) {
+// --- FUNCIÓN SOLO PARA CAMUFLAR EL NOMBRE ---
+function obtenerNombreMeta(nombre: string, categoria: string) {
   const catLower = (categoria || '').toLowerCase();
-  
-  // 1. Detectar categoría de alcohol
   const esCategoriaAlcohol = catLower.includes('alcohol') && !catLower.includes('sin alcohol');
-  
-  // 2. Detectar palabras clave típicas de bebidas alcohólicas en el título
   const contienePalabraAlcohol = /cerveza|vino|fernet|vodka|ron|gin|whisky|licor|champagne|gancia|aperitivo|malbec|cabernet|syrah|bonarda|chenin|chardonnay/i.test(nombre);
 
-  const esAlcohol = esCategoriaAlcohol || contienePalabraAlcohol;
-
   let nombreMeta = nombre;
-  
-  // CORRECCIÓN 1: Si hay una imagen válida, la respeta. Si viene vacía o nula, recién ahí usa la botella genérica.
-  let imagenMeta = urlImagen && urlImagen.trim() !== '' ? urlImagen.trim() : URL_BOTELLA_SUPERCOMPRAS;
 
-  if (esAlcohol) {
-    // ❌ BORRÉ LA LÍNEA QUE FORZABA LA IMAGEN GENÉRICA ACÁ ADENTRO
-    
-    // Censura de palabras sensibles que activan el filtro automático de Meta
+  if (esCategoriaAlcohol || contienePalabraAlcohol) {
     nombreMeta = nombreMeta
       .replace(/cerveza/gi, 'B. de Malta')
       .replace(/vino/gi, 'B. de Uva')
@@ -34,7 +22,7 @@ function camuflarParaMeta(nombre: string, categoria: string, urlImagen: string) 
       .replace(/licor|champagne/gi, 'B. Dulce');
   }
 
-  return { nombreMeta, imagenMeta };
+  return nombreMeta;
 }
 
 export async function POST(request: Request) {
@@ -45,7 +33,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: 'Faltan datos obligatorios' }, { status: 400 });
     }
 
-    // Se guardan los datos reales en Supabase
     const { data: productoCreado, error } = await supabase
       .from('productos')
       .insert([{ 
@@ -55,7 +42,7 @@ export async function POST(request: Request) {
         activo: true,
         categoria: categoria || 'Sin asignar',
         rubro: rubro || null,
-        image_url: image_url || null // Aseguramos que guarde la imagen en el POST también
+        image_url: image_url || null
       }])
       .select()
       .single();
@@ -74,7 +61,9 @@ export async function POST(request: Request) {
     const accessToken = process.env.META_ACCESS_TOKEN;
 
     if (catalogId && accessToken) {
-      const { nombreMeta, imagenMeta } = camuflarParaMeta(nombre.trim(), categoria || '', image_url || '');
+      const nombreMeta = obtenerNombreMeta(nombre.trim(), categoria || '');
+      // Al crear, si no hay foto, le mandamos la genérica para que Meta lo acepte
+      const imagenMeta = image_url && image_url.trim() !== '' ? image_url.trim() : URL_BOTELLA_SUPERCOMPRAS;
 
       await fetch(`https://graph.facebook.com/v19.0/${catalogId}/products`, {
         method: 'POST',
@@ -100,12 +89,14 @@ export async function POST(request: Request) {
 
 export async function PUT(request: Request) {
   try {
-    // CORRECCIÓN 2: Extraemos stock_fisico de la petición (antes faltaba)
     const { id_producto, nombre, precio, activo, image_url, categoria, rubro, stock_fisico } = await request.json(); 
 
     if (!id_producto) {
       return NextResponse.json({ success: false, error: 'Falta ID' }, { status: 400 });
     }
+
+    // Comprobamos si realmente enviaste una imagen nueva
+    const hayNuevaImagen = image_url && image_url.trim() !== '';
 
     const updateData: any = {};
     if (nombre !== undefined) updateData.nombre = nombre.trim();
@@ -113,10 +104,12 @@ export async function PUT(request: Request) {
     if (activo !== undefined) updateData.activo = activo;
     if (categoria !== undefined) updateData.categoria = categoria;
     if (rubro !== undefined) updateData.rubro = rubro;
-    
-    // CORRECCIÓN 3: Agregamos la nueva imagen y el stock al objeto que actualiza la BD
-    if (image_url !== undefined) updateData.image_url = image_url;
     if (stock_fisico !== undefined) updateData.stock_fisico = Number(stock_fisico);
+    
+    // Si hay una imagen nueva, la guardamos en Supabase
+    if (hayNuevaImagen) {
+      updateData.image_url = image_url.trim();
+    }
 
     const { data: prodActualizado, error } = await supabase
       .from('productos')
@@ -131,11 +124,7 @@ export async function PUT(request: Request) {
     const accessToken = process.env.META_ACCESS_TOKEN;
 
     if (catalogId && accessToken) {
-      const { nombreMeta, imagenMeta } = camuflarParaMeta(
-        prodActualizado.nombre, 
-        prodActualizado.categoria || '', 
-        image_url || prodActualizado.image_url || ''
-      );
+      const nombreMeta = obtenerNombreMeta(prodActualizado.nombre, prodActualizado.categoria || '');
 
       const bodyMeta: any = {
         retailer_id: prodActualizado.id_producto,
@@ -146,14 +135,17 @@ export async function PUT(request: Request) {
         availability: activo === false ? 'out of stock' : (prodActualizado.stock_fisico > 0 || prodActualizado.tipo === 'combo' ? 'in stock' : 'out of stock')
       };
 
-      if (imagenMeta) {
-        bodyMeta.image_url = imagenMeta;
+      // ACÁ ESTÁ LA MAGIA:
+      // Si subiste una foto nueva, se la mandamos a Meta para que la cambie.
+      // Si NO subiste foto, no le mandamos nada y Meta deja intacta la que ya tenía.
+      if (hayNuevaImagen) {
+        bodyMeta.image_url = image_url.trim();
       }
 
       await fetch(`https://graph.facebook.com/v19.0/${catalogId}/products`, {
-        method: 'POST',
+        method: 'POST', // Meta usa POST para actualizar si el retailer_id ya existe
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` },
-        body: JSON.stringify({ ...bodyMeta })
+        body: JSON.stringify(bodyMeta)
       });
     }
 
@@ -177,10 +169,8 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ success: false, error: 'Falta el ID del producto' }, { status: 400 });
     }
 
-    // 1. Eliminar lotes asociados en Supabase
     await supabase.from('lotes').delete().eq('id_producto', id_producto);
 
-    // 2. Eliminar el producto de Supabase
     const { error } = await supabase
       .from('productos')
       .delete()
@@ -188,7 +178,6 @@ export async function DELETE(request: Request) {
 
     if (error) throw new Error(error.message);
 
-    // 3. Eliminar del catálogo de Meta / WhatsApp
     const catalogId = process.env.META_CATALOG_ID;
     const accessToken = process.env.META_ACCESS_TOKEN;
 
