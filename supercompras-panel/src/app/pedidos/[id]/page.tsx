@@ -12,6 +12,7 @@ export default function DetallePedido() {
   
   const [pedido, setPedido] = useState<any>(null);
   const [detalles, setDetalles] = useState<any[]>([]);
+  const [pago, setPago] = useState<any>(null); // NUEVO ESTADO: Para guardar los datos del pago
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -25,6 +26,7 @@ export default function DetallePedido() {
 
   useEffect(() => {
     async function fetchDetalleCompleto() {
+      // 1. Traer el pedido
       const { data: dataPedido, error: errorPedido } = await supabase
         .from('pedidos')
         .select('*')
@@ -33,6 +35,7 @@ export default function DetallePedido() {
 
       if (dataPedido) setPedido(dataPedido);
 
+      // 2. Traer los detalles
       const { data: dataDetalles, error: errorDetalles } = await supabase
         .from('detalle_pedidos')
         .select(`
@@ -44,6 +47,15 @@ export default function DetallePedido() {
         .eq('id_pedido', id);
 
       if (dataDetalles) setDetalles(dataDetalles);
+      
+      // 3. Traer el método de pago
+      const { data: dataPago } = await supabase
+        .from('pagos')
+        .select('metodo, estado')
+        .eq('id_pedido', id)
+        .maybeSingle(); // Usamos maybeSingle para que no tire error si el pedido aún no tiene pago asociado
+
+      if (dataPago) setPago(dataPago);
       
       setLoading(false);
     }
@@ -88,6 +100,9 @@ export default function DetallePedido() {
         <p style={{ margin: '5px 0' }}><strong>Teléfono del cliente:</strong> +{pedido.whatsapp_id}</p>
         <p style={{ margin: '5px 0' }}><strong>Dirección de entrega:</strong> {pedido.direccion || 'No especificada'}</p>
         <p style={{ margin: '5px 0' }}><strong>Estado actual:</strong> {pedido.estado}</p>
+        <p style={{ margin: '5px 0', color: pago?.estado === 'Aprobado' ? '#4ade80' : '#fbbf24' }}>
+          <strong>Método de pago:</strong> {pago ? `${pago.metodo} (${pago.estado})` : 'No registrado'}
+        </p>
         <p style={{ margin: '5px 0' }}><strong>Total abonado:</strong> ${pedido.total_compra}</p>
       </div>
 
@@ -106,8 +121,6 @@ export default function DetallePedido() {
           </thead>
           <tbody>
             {detalles.map((item, index) => {
-              // Acá podés reflejar si el producto fue marcado (si guardás el estado del check en base de datos o si es modo informativo)
-              // Por defecto se muestra informativo de solo lectura
               return (
                 <tr key={index} style={{ borderBottom: '1px solid #f3f4f6' }}>
                   <td className="font-fuerte" style={{ padding: '10px', color: '#fdfcfc' }}>

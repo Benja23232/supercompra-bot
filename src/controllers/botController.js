@@ -20,11 +20,9 @@ function obtenerDatosReparto() {
     const ahora = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Argentina/Buenos_Aires" }));
     const horaDecimal = ahora.getHours() + (ahora.getMinutes() / 60);
 
-    // Si es después de las 19:00 o antes de las 09:30
     if (horaDecimal >= 19 || horaDecimal < 9.5) {
         return { turno: 'Mañana', horarioTexto: '09:30 a 11:00 hs', estadoBD: 'Pendiente - Mañana' };
     } else {
-        // Si es entre las 09:30 y las 19:00
         return { turno: 'Tarde', horarioTexto: '19:00 a 20:30 hs', estadoBD: 'Pendiente - Tarde' };
     }
 }
@@ -32,12 +30,10 @@ function obtenerDatosReparto() {
 function obtenerDisponibilidadFullORetiro() {
     const ahora = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Argentina/Buenos_Aires" }));
     const horaDecimal = ahora.getHours() + (ahora.getMinutes() / 60);
-    // Retiro y Envío Full disponibles de 07:00 a 23:00
     return (horaDecimal >= 7 && horaDecimal < 23);
 }
 
 // --- FUNCIONES AUXILIARES DE NAVEGACIÓN ---
-
 async function enviarMenuRubros(numeroCliente) {
     try {
         const resRubros = await pool.query("SELECT DISTINCT rubro FROM productos WHERE stock_fisico > 0 AND rubro IS NOT NULL AND TRIM(rubro) <> '' ORDER BY rubro ASC");
@@ -151,7 +147,6 @@ async function dispararEnvioFactura(idPedido, numeroCliente) {
 }
 
 // --- MANEJO DEL WEBHOOK ---
-
 const verificarToken = (req, res) => {
     const verify_token = process.env.WHATSAPP_VERIFY_TOKEN;
     const mode = req.query['hub.mode'];
@@ -175,6 +170,12 @@ const recibirMensaje = async (req, res) => {
         if (mensajesProcesados.size > 500) mensajesProcesados.clear();
 
         let numeroCliente = message.from.startsWith("549") ? message.from.replace("549", "54") : message.from;
+
+        // 🛑 BLOQUEO ESTRICTO: Si está esperando dirección y manda audio, sticker o cualquier formato no válido
+        if (pedidosEsperandoDireccion.has(numeroCliente) && message.type !== 'text' && message.type !== 'location' && message.type !== 'interactive' && message.type !== 'order') {
+            await enviarMensaje(numeroCliente, "🛑 *Falta tu dirección.*\n\nNo podemos procesar audios ni stickers en este paso. Por favor, escribí tu calle y número con texto, o envianos tu ubicación GPS (📍) para poder avanzar con la compra.");
+            return res.sendStatus(200);
+        }
 
         // --- 1. MANEJO DE UBICACIÓN (GPS) ---
         if (message.type === 'location') {
@@ -220,6 +221,12 @@ const recibirMensaje = async (req, res) => {
             if (pedidosEsperandoDireccion.has(numeroCliente)) {
                 let direccionMejorada = textoRecibido.trim();
                 
+                // 🛑 FILTRO DE SEGURIDAD PARA TEXTOS CORTOS
+                if (direccionMejorada.length < 5) {
+                    await enviarMensaje(numeroCliente, "🛑 *Falta tu dirección.*\n\nLa dirección que ingresaste es demasiado corta. Es obligatorio que nos pases tu calle y número (Ej: Belgrano 1024) o envíes tu ubicación por GPS (📍) para poder entregar tu pedido.");
+                    return res.sendStatus(200);
+                }
+
                 if (!direccionMejorada.toLowerCase().includes('tres lomas')) {
                     direccionMejorada = `${direccionMejorada}, Tres Lomas`;
                 }
@@ -371,9 +378,10 @@ const recibirMensaje = async (req, res) => {
                 
                 const totalCarrito = subtotal;
 
+                // ESTADO FANTASMA: Se guarda como 'Incompleto' para no ensuciar tu panel hasta que pasen la dirección.
                 const resPedido = await pool.query(
                     `INSERT INTO pedidos (whatsapp_id, estado, total_compra) VALUES ($1, $2, $3) RETURNING id_pedido`,
-                    [numeroCliente, 'Pendiente', totalCarrito]
+                    [numeroCliente, 'Incompleto (Faltan Datos)', totalCarrito]
                 );
                 const idNuevoPedido = resPedido.rows[0].id_pedido;
 
