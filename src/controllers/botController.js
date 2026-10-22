@@ -80,85 +80,36 @@ function obtenerDisponibilidadFullORetiro() {
     return (horaDecimal >= 7 && horaDecimal < 23);
 }
 
-// --- FUNCIONES AUXILIARES DE NAVEGACIÓN ---
-async function enviarMenuRubros(numeroCliente) {
+// --- ACCESO DIRECTO AL CATÁLOGO NATIVO (SIN NAVEGACIÓN POR CONVERSACIÓN) ---
+async function enviarBotonCatalogo(numeroCliente, textoPersonalizado = null) {
     try {
-        console.log(`🔍 [1/3] Buscando rubros en la BD para ${numeroCliente}...`);
-        const resRubros = await pool.query("SELECT DISTINCT rubro FROM productos WHERE stock_fisico > 0 AND rubro IS NOT NULL AND TRIM(rubro) <> '' ORDER BY rubro ASC");
-        
-        console.log(`✅ [2/3] BD respondió. Rubros encontrados: ${resRubros.rows.length}`);
+        const cuerpoMensaje = textoPersonalizado || 
+            "¡Hola! 👋 Bienvenido a *Supercompra*.\n\nTocá el botón de abajo (o el ícono de la tiendita 🏪 arriba a la derecha) para ver nuestro catálogo, armar tu carrito y enviarnos tu pedido:";
 
-        if (resRubros.rows.length > 0) {
-            const rowsRubros = resRubros.rows.map(row => ({
-                id: `rubro_${row.rubro.trim().substring(0, 20)}`, 
-                title: row.rubro.trim().substring(0, 24) 
-            }));
+        const dataCatalogo = {
+            messaging_product: "whatsapp",
+            recipient_type: "individual",
+            to: numeroCliente,
+            type: "interactive",
+            interactive: {
+                type: "catalog_message",
+                body: { text: cuerpoMensaje },
+                action: { name: "catalog_message" },
+                footer: { text: "Supercompra - Tres Lomas" }
+            }
+        };
 
-            const dataMenuRubros = {
-                messaging_product: "whatsapp",
-                recipient_type: "individual",
-                to: numeroCliente,
-                type: "interactive",
-                interactive: {
-                    type: "list",
-                    header: { type: "text", text: "Supercompra" },
-                    body: { text: "¡Hola! 👋 Bienvenido a nuestro súper.\n\nDesplegá el menú de abajo para ver nuestros rubros." },
-                    footer: { text: "Navegá por nuestro catálogo" },
-                    action: {
-                        button: "Ver Rubros",
-                        sections: [{
-                            title: "Rubros Principales",
-                            rows: rowsRubros.slice(0, 10)
-                        }]
-                    }
-                }
-            };
-            
-            console.log("📤 [3/3] Enviando menú de rubros a Meta...");
-            await axios.post(`https://graph.facebook.com/v17.0/${process.env.WHATSAPP_PHONE_ID}/messages`, dataMenuRubros, { headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` } });
-            console.log("🚀 ¡Menú enviado exitosamente!");
-        } else {
-            await enviarMensaje(numeroCliente, "¡Hola! 👋 Bienvenido a Supercompra.\n\nEn este momento estamos reponiendo stock. ¡Volvé a consultarnos más tarde!");
-        }
+        await axios.post(
+            `https://graph.facebook.com/v17.0/${process.env.WHATSAPP_PHONE_ID}/messages`,
+            dataCatalogo,
+            { headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` } }
+        );
     } catch (error) {
-        console.error("❌ Error en enviarMenuRubros:", error.response?.data || error.message);
-        await enviarMensaje(numeroCliente, "¡Hola! 👋 Bienvenido a Supercompra.\n\nEn este momento estamos reponiendo stock. ¡Volvé a consultarnos más tarde!");
-    }
-}
-
-async function enviarMenuCategorias(numeroCliente, rubro) {
-    try {
-        const resCategorias = await pool.query("SELECT DISTINCT categoria FROM productos WHERE rubro ILIKE $1 AND stock_fisico > 0 AND categoria IS NOT NULL AND TRIM(categoria) <> '' ORDER BY categoria ASC", [`${rubro}%`]);
-        
-        if (resCategorias.rows.length > 0) {
-            const rowsCategorias = resCategorias.rows.map(row => ({
-                id: `cat_${row.categoria.trim().substring(0, 20)}`, 
-                title: row.categoria.trim().substring(0, 24) 
-            }));
-
-            const dataMenuCategorias = {
-                messaging_product: "whatsapp",
-                recipient_type: "individual",
-                to: numeroCliente,
-                type: "interactive",
-                interactive: {
-                    type: "list",
-                    body: { text: `Estás en la sección *${rubro}*.\n\nElegí una góndola para ver los productos:` },
-                    action: {
-                        button: "Ver Góndolas",
-                        sections: [{
-                            title: "Góndolas Disponibles",
-                            rows: rowsCategorias.slice(0, 10)
-                        }]
-                    }
-                }
-            };
-            await axios.post(`https://graph.facebook.com/v17.0/${process.env.WHATSAPP_PHONE_ID}/messages`, dataMenuCategorias, { headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` } });
-        } else {
-            await enviarMensaje(numeroCliente, "No hay stock en este rubro por el momento.");
-        }
-    } catch (error) {
-        console.error("Error armando menú de categorías:", error.response?.data || error.message);
+        console.error("❌ Error enviando botón de catálogo:", error.response?.data || error.message);
+        await enviarMensaje(
+            numeroCliente,
+            "¡Hola! 👋 Bienvenido a *Supercompra*.\n\nTocá el ícono de la tiendita 🏪 arriba a la derecha en este chat para abrir nuestro catálogo y armar tu carrito."
+        );
     }
 }
 
@@ -217,7 +168,6 @@ const verificarToken = (req, res) => {
 
 const recibirMensaje = async (req, res) => {
     // ⚡ 1. DEVOLVER 200 OK INMEDIATAMENTE A META
-    // Esto evita que Meta reintente enviar la petición si el OCR o la BD demoran más de 3 segundos
     res.sendStatus(200);
 
     try {
@@ -227,7 +177,7 @@ const recibirMensaje = async (req, res) => {
             if (status.status === 'failed') {
                 console.error(`🚨 Meta rechazó mensaje para ${status.recipient_id}:`, JSON.stringify(status.errors, null, 2));
             }
-            return; // Corta acá para no procesar como mensaje
+            return;
         }
 
         const message = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
@@ -350,19 +300,19 @@ const recibirMensaje = async (req, res) => {
                     const resPromo = await pool.query("SELECT * FROM productos WHERE nombre ILIKE $1 AND tipo = 'combo'", [`%${nombrePromoBuscada}%`]);
                     if (resPromo.rows.length > 0) {
                         const promo = resPromo.rows[0];
-                        await enviarMensaje(numeroCliente, `✨ ¡Encontré la promo que buscás!\n\n*${promo.nombre}*\n💰 Precio: *$${promo.precio}*\n\nPara pedirla y sumarla a tu carrito, podés explorar nuestro catálogo interactivo.`);
-                    } else {
-                        await enviarMensaje(numeroCliente, `¡Hola! Vi que querés consultar por una promo. Acá te comparto nuestros rubros disponibles para que elijas lo que más te guste:`);
+                        await enviarBotonCatalogo(
+                            numeroCliente,
+                            `✨ ¡Encontré la promo que buscás!\n\n*${promo.nombre}*\n💰 Precio: *$${promo.precio}*\n\nTocá el botón de abajo para abrir el catálogo y sumarla a tu carrito:`
+                        );
+                        return;
                     }
                 } catch (errorPromo) {
                     console.error("Error buscando promo por texto:", errorPromo);
                 }
-                await enviarMenuRubros(numeroCliente);
-                return;
             }
 
-            // Fallback: Muestra el menú para saludos comunes
-            await enviarMenuRubros(numeroCliente);
+            // Respuesta por defecto ante cualquier saludo: envía el botón de acceso directo al Catálogo
+            await enviarBotonCatalogo(numeroCliente);
             return;
         }
 
@@ -496,104 +446,19 @@ const recibirMensaje = async (req, res) => {
             return;
         }
 
-        // --- 5. CAPTURA DE BOTONES Y LISTAS INTERACTIVAS ---
+        // --- 5. CAPTURA DE BOTONES Y LISTAS DE CHECKOUT ---
         if (message.type === 'interactive') {
             let opcion = message.interactive.type === 'button_reply' ? message.interactive.button_reply.id : message.interactive.list_reply.id;
 
-            if (opcion === 'ver_menu_rubros') {
-                await enviarMenuRubros(numeroCliente);
-                return;
-            }
-
-            if (opcion.startsWith('rubro_')) {
-                const rubroElegido = opcion.replace('rubro_', '');
-                await enviarMenuCategorias(numeroCliente, rubroElegido);
-                return;
-            }
-
-            if (opcion.startsWith('cat_')) {
-                const categoriaElegida = opcion.replace('cat_', '');
-
-                if (categoriaElegida.toLowerCase().includes('alcohol') || categoriaElegida.toLowerCase().includes('bebidas con alcohol')) {
-                    const dataImagenBebidas = {
-                        messaging_product: "whatsapp",
-                        to: numeroCliente,
-                        type: "image",
-                        image: {
-                            link: "https://ntungxnymcijfxueucoz.supabase.co/storage/v1/object/public/catalogo/catalogo.jpeg",
-                            caption: "🍷 *Catálogo de Bebidas con Alcohol*\n\n" +
-                                     "¡Hola! Mirá nuestro catálogo visual en la imagen de arriba.\n\n" +
-                                     "👉 *Para pedir bebidas, escribile directo a nuestro asesor haciendo clic acá:*\n" +
-                                     "https://api.whatsapp.com/send?phone=5492392689864&text=¡Hola!%20Quiero%20pedir%20una%20bebida%20por%20acá"
-                        }
-                    };
-                    try {
-                        await axios.post(`https://graph.facebook.com/v17.0/${process.env.WHATSAPP_PHONE_ID}/messages`, dataImagenBebidas, { headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` } });
-                    } catch (errorFlyer) {
-                        await enviarMensaje(numeroCliente, "🍷 *Catálogo de Bebidas*\n\nPara hacer tu pedido, escribile directo a nuestro asesor acá:\nhttps://api.whatsapp.com/send?phone=5492392689864&text=¡Hola!%20Quiero%20pedir%20una%20bebida%20por%20acá");
-                    }
-                    return;
-                }
-
-                try {
-                    const resProductos = await pool.query("SELECT id_producto, categoria FROM productos WHERE categoria ILIKE $1 AND stock_fisico > 0 LIMIT 30", [`${categoriaElegida}%`]);
-                    if (resProductos.rows.length > 0) {
-                        const nombreCategoriaReal = resProductos.rows[0].categoria;
-                        const productItems = resProductos.rows.map(p => ({ product_retailer_id: p.id_producto }));
-                        const dataListaProductos = {
-                            messaging_product: "whatsapp",
-                            recipient_type: "individual",
-                            to: numeroCliente,
-                            type: "interactive",
-                            interactive: {
-                                type: "product_list",
-                                header: { type: "text", text: `Góndola: ${nombreCategoriaReal.substring(0, 45)}` },
-                                body: { text: `Explorá los productos y sumalos a tu carrito.` },
-                                action: {
-                                    catalog_id: "2194379468072114",
-                                    sections: [{
-                                        title: nombreCategoriaReal.substring(0, 24),
-                                        product_items: productItems
-                                    }]
-                                }
-                            }
-                        };
-                        await axios.post(`https://graph.facebook.com/v17.0/${process.env.WHATSAPP_PHONE_ID}/messages`, dataListaProductos, { headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` } });
-
-                        const dataBotonVolver = {
-                            messaging_product: "whatsapp",
-                            recipient_type: "individual",
-                            to: numeroCliente,
-                            type: "interactive",
-                            interactive: {
-                                type: "button",
-                                body: { text: "¿Querés buscar en otros rubros?" },
-                                action: {
-                                    buttons: [
-                                        { type: "reply", reply: { id: "ver_menu_rubros", title: "📂 Volver a Rubros" } }
-                                    ]
-                                }
-                            }
-                        };
-                        await axios.post(`https://graph.facebook.com/v17.0/${process.env.WHATSAPP_PHONE_ID}/messages`, dataBotonVolver, { headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` } });
-                    } else {
-                        await enviarMensaje(numeroCliente, "No hay stock disponible en esta góndola por el momento.");
-                    }
-                } catch (errorCatalogo) {
-                    console.error("Error enviando productos de categoría:", errorCatalogo.response?.data || errorCatalogo.message);
-                }
-                return;
-            }
-
             if (opcion === 'entrega_domicilio') {
-                if (!pedidosEsperandoDireccion.has(numeroCliente)) return await enviarMensaje(numeroCliente, "La sesión expiró, por favor reenviá tu carrito.");
+                if (!pedidosEsperandoDireccion.has(numeroCliente)) return await enviarBotonCatalogo(numeroCliente, "La sesión expiró, por favor volvé a armar tu carrito:");
                 await enviarMensaje(numeroCliente, "¡Perfecto! 🚚\n\nPara el envío, podés hacer dos cosas:\n1️⃣ *Escribirnos tu dirección* (Ej: Belgrano 1024)\n2️⃣ Tocar el 📎 (clip) abajo y enviarnos tu *Ubicación actual* de WhatsApp para mayor precisión.");
                 return;
             }
 
             if (opcion === 'retiro_deposito') {
                 const datosTemp = pedidosEsperandoDireccion.get(numeroCliente);
-                if (!datosTemp) return await enviarMensaje(numeroCliente, "La sesión expiró, por favor reenviá tu carrito.");
+                if (!datosTemp) return await enviarBotonCatalogo(numeroCliente, "La sesión expiró, por favor volvé a armar tu carrito:");
 
                 datosTemp.direccion = 'Retiro en depósito (Mitre 1044)';
                 datosTemp.estadoBD = 'Pendiente - Retiro';
@@ -635,7 +500,7 @@ const recibirMensaje = async (req, res) => {
 
             if (opcion === 'reparto_normal' || opcion === 'envio_full') {
                 const datosTemp = pedidosEsperandoTurno.get(numeroCliente);
-                if (!datosTemp) return await enviarMensaje(numeroCliente, "La sesión expiró, por favor reenviá tu carrito.");
+                if (!datosTemp) return await enviarBotonCatalogo(numeroCliente, "La sesión expiró, por favor volvé a armar tu carrito:");
 
                 let textoConfirmacionHorario = '';
 
@@ -688,7 +553,7 @@ const recibirMensaje = async (req, res) => {
             // --- 6. PASO FINAL: SELECCIÓN DE PAGO E INSERCIÓN EN BASE DE DATOS ---
             if (opcion === 'pago_transferencia' || opcion === 'pago_efectivo') {
                 const datosTemp = pedidosEsperandoPago.get(numeroCliente);
-                if (!datosTemp) return await enviarMensaje(numeroCliente, "Hubo un problema con tu sesión de pago. Por favor reenviá tu carrito.");
+                if (!datosTemp) return await enviarBotonCatalogo(numeroCliente, "Hubo un problema con tu sesión de pago. Por favor reenviá tu carrito:");
 
                 const resPedido = await pool.query(
                     `INSERT INTO pedidos (whatsapp_id, estado, total_compra, direccion) VALUES ($1, $2, $3, $4) RETURNING id_pedido`,

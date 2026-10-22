@@ -6,7 +6,11 @@ require('dotenv').config();
 // 1. Enchufamos la base de datos y la función de mensajes
 const { pool } = require('./services/db');
 const { enviarMensaje } = require('./services/whatsapp');
-const { iniciarSesionWhatsApp } = require('./services/whatsappSession'); // 👈 Importamos la sesión del 2° número
+
+// 👇 IMPORT DE BAILEYS (2° NÚMERO) — Desactivado temporalmente.
+// Si en el futuro necesitás reactivar el mini-bot de Baileys, descomentá esta línea
+// y también la llamada a iniciarSesionWhatsApp() al final del archivo.
+// const { iniciarSesionWhatsApp } = require('./services/whatsappSession');
 
 // 👇 ACÁ IMPORTAMOS LA NUEVA FUNCIÓN DEL BOT 👇
 const { notificarPedidoListo } = require('./controllers/botController');
@@ -25,7 +29,15 @@ const PORT = process.env.PORT || 3000;
 
 // Middlewares
 app.use(cors());
-app.use(express.json());
+
+// 🔐 IMPORTANTE: Guardamos el "raw body" para poder verificar la firma
+// X-Hub-Signature-256 que envía Meta en cada webhook.
+// Sin esto, cualquiera podría inyectar payloads falsos en /webhook.
+app.use(express.json({
+    verify: (req, res, buf) => {
+        req.rawBody = buf;
+    }
+}));
 
 // 3. Activamos la ruta para WhatsApp
 app.use('/webhook', webhookRoutes);
@@ -83,7 +95,6 @@ app.post('/mercadopago-webhook', async (req, res) => {
     }
 });
 
-// 5. Obtener lista de productos para el panel web
 // 5. Obtener lista de productos para el panel web (Trayendo todos, con o sin stock)
 app.get('/api/productos', async (req, res) => {
     try {
@@ -193,6 +204,15 @@ app.get('/', (req, res) => {
 app.listen(PORT, () => {
     console.log(`🚀 Servidor central corriendo a la perfección en http://localhost:${PORT}`);
     
-    // Encendemos el mini-bot del 2° número y generamos el QR en consola
-    iniciarSesionWhatsApp();
+    // ⚠️ BAILEYS (2° NÚMERO) — DESACTIVADO
+    // Lo dejamos comentado porque volviste a la API oficial como canal principal.
+    // El flujo de "bebidas con alcohol" sigue funcionando porque usa un link
+    // wa.me (api.whatsapp.com/send?phone=...) que se abre en el celular del cliente,
+    // NO depende de que este servidor tenga una sesión de Baileys activa.
+    //
+    // Si en el futuro querés reactivar el mini-bot de Baileys:
+    //   1. Descomentá el require de 'whatsappSession' arriba.
+    //   2. Descomentá la línea de abajo.
+    //
+    // iniciarSesionWhatsApp();
 });
