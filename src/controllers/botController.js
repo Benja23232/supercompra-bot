@@ -11,8 +11,53 @@ const pedidosEsperandoTurno = new Map();
 const pedidosEsperandoPago = new Map();
 const pedidosEsperandoComprobante = new Map(); 
 
-// Memoria anti-duplicados
+// Memoria anti-duplicados por ID de mensaje de Meta
 const mensajesProcesados = new Set(); 
+
+// 🛑 1. FRENO ANTI-BUCLE: Control de frecuencia en memoria (Máx 8 mensajes por minuto por cliente)
+const controlFrecuencia = new Map();
+
+function esBucleSospechoso(numero) {
+    const ahora = Date.now();
+    const registro = controlFrecuencia.get(numero) || { count: 0, inicioVentana: ahora };
+
+    // Si pasó más de 1 minuto, reiniciamos la ventana de tiempo
+    if (ahora - registro.inicioVentana > 60000) {
+        controlFrecuencia.set(numero, { count: 1, inicioVentana: ahora });
+        return false;
+    }
+
+    registro.count++;
+    controlFrecuencia.set(numero, registro);
+
+    // Si manda más de 8 mensajes en menos de 60 segundos, cortamos la ejecución
+    if (registro.count > 8) {
+        console.warn(`🚨 FRENO DE EMERGENCIA: Bucle o ráfaga detectada para ${numero} (${registro.count} msgs/min). Mensaje ignorado para proteger la facturación.`);
+        return true;
+    }
+
+    return false;
+}
+
+// 🛑 2. FILTRO DE AUTO-RESPUESTAS: Ignora textos típicos de bots o respuestas de ausencia
+const FRASES_AUTO_REPLY = [
+    'gracias por comunicarse',
+    'gracias por comunicarte',
+    'gracias por escribirnos',
+    'en este momento no podemos',
+    'en este momento no estoy',
+    'mensaje automático',
+    'respuesta automática',
+    'te responderemos a la brevedad',
+    'nuestro horario de atención',
+    'auto-reply'
+];
+
+function esRespuestaAutomatica(texto) {
+    if (!texto) return false;
+    const textoMin = texto.toLowerCase();
+    return FRASES_AUTO_REPLY.some(frase => textoMin.includes(frase));
+}
 
 const COSTO_FULL = 1500;
 const MINIMO_ENVIO_GRATIS = 40000;
@@ -51,7 +96,7 @@ async function enviarMenuRubros(numeroCliente) {
 
             const dataMenuRubros = {
                 messaging_product: "whatsapp",
-                recipient_type: "individual", // <-- FIX: Parámetro exigido a veces por Meta
+                recipient_type: "individual",
                 to: numeroCliente,
                 type: "interactive",
                 interactive: {
@@ -69,14 +114,14 @@ async function enviarMenuRubros(numeroCliente) {
                 }
             };
             
-            console.log("📤 [3/3] Enviando petición a Meta para mostrar el menú...");
+            console.log("📤 [3/3] Enviando menú de rubros a Meta...");
             await axios.post(`https://graph.facebook.com/v17.0/${process.env.WHATSAPP_PHONE_ID}/messages`, dataMenuRubros, { headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` } });
-            console.log("🚀 ¡Menú enviado exitosamente a la API!");
+            console.log("🚀 ¡Menú enviado exitosamente!");
         } else {
-             await enviarMensaje(numeroCliente, "¡Hola! 👋 Bienvenido a Supercompra.\n\nEn este momento estamos reponiendo stock. ¡Volvé a consultarnos más tarde!");
+            await enviarMensaje(numeroCliente, "¡Hola! 👋 Bienvenido a Supercompra.\n\nEn este momento estamos reponiendo stock. ¡Volvé a consultarnos más tarde!");
         }
     } catch (error) {
-        console.error("❌ Error CRÍTICO en enviarMenuRubros:", error.response?.data || error.message);
+        console.error("❌ Error en enviarMenuRubros:", error.response?.data || error.message);
         await enviarMensaje(numeroCliente, "¡Hola! 👋 Bienvenido a Supercompra.\n\nEn este momento estamos reponiendo stock. ¡Volvé a consultarnos más tarde!");
     }
 }
@@ -107,7 +152,7 @@ async function enviarMenuCategorias(numeroCliente, rubro) {
                         }]
                     }
                 }
-            }
+            };
             await axios.post(`https://graph.facebook.com/v17.0/${process.env.WHATSAPP_PHONE_ID}/messages`, dataMenuCategorias, { headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` } });
         } else {
             await enviarMensaje(numeroCliente, "No hay stock en este rubro por el momento.");
@@ -171,46 +216,42 @@ const verificarToken = (req, res) => {
 };
 
 const recibirMensaje = async (req, res) => {
+    // ⚡ 1. DEVOLVER 200 OK INMEDIATAMENTE A META
+    // Esto evita que Meta reintente enviar la petición si el OCR o la BD demoran más de 3 segundos
+    res.sendStatus(200);
+
     try {
-        // --- NUEVO: INTERCEPTOR DE ERRORES ASINCRÓNICOS DE META ---
+        // --- FILTRO DE ESTADOS (delivered, read, failed, sent) ---
         const status = req.body.entry?.[0]?.changes?.[0]?.value?.statuses?.[0];
         if (status) {
             if (status.status === 'failed') {
-                console.error("\n🚨 ==========================================");
-                console.error(`🚨 META RECHAZÓ EL MENSAJE PARA ${status.recipient_id}! MOTIVO EXACTO:`);
-                console.error(JSON.stringify(status.errors, null, 2));
-                console.error("🚨 ==========================================\n");
-            } else {
-                console.log(`📡 Acuse de Meta: Mensaje [${status.status}] para el número ${status.recipient_id}`);
+                console.error(`🚨 Meta rechazó mensaje para ${status.recipient_id}:`, JSON.stringify(status.errors, null, 2));
             }
-            return res.sendStatus(200);
+            return; // Corta acá para no procesar como mensaje
         }
-
-        console.log("🔥 Entró a recibirMensaje"); 
 
         const message = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
-        
-        if (!message) {
-            console.log("🛑 Abortado: Estructura desconocida o sin mensajes.");
-            return res.sendStatus(200);
-        }
+        if (!message) return;
 
-        console.log(`💬 Mensaje recibido de ${message.from}: Tipo [${message.type}]`); 
-
+        // --- FILTRO DE MENSAJES DUPLICADOS ---
         if (mensajesProcesados.has(message.id)) {
-            console.log("♻️ Abortado: Mensaje duplicado.");
-            return res.sendStatus(200);
+            return;
         }
         mensajesProcesados.add(message.id);
-        if (mensajesProcesados.size > 500) mensajesProcesados.clear();
+        if (mensajesProcesados.size > 1000) mensajesProcesados.clear();
 
-        // FIX: Regresamos a la lógica obligatoria para Argentina de reemplazar el 549 por 54.
+        // Normalización de prefijo telefónico en Argentina
         let numeroCliente = message.from.startsWith("549") ? message.from.replace("549", "54") : message.from;
 
-        // 🛑 BLOQUEO ESTRICTO: Si está esperando dirección y manda algo no válido
+        // 🛑 APLICAR FRENO DE SEGURIDAD CONTRA LOOPS
+        if (esBucleSospechoso(numeroCliente)) return;
+
+        console.log(`💬 Mensaje recibido de ${numeroCliente}: Tipo [${message.type}]`);
+
+        // 🛑 BLOQUEO ESTRICTO: Esperando dirección
         if (pedidosEsperandoDireccion.has(numeroCliente) && message.type !== 'text' && message.type !== 'location' && message.type !== 'interactive' && message.type !== 'order') {
             await enviarMensaje(numeroCliente, "🛑 *Falta tu dirección.*\n\nNo podemos procesar audios ni stickers en este paso. Por favor, escribí tu calle y número con texto, o envianos tu ubicación GPS (📍) para poder avanzar con la compra.");
-            return res.sendStatus(200);
+            return;
         }
 
         // --- 1. MANEJO DE UBICACIÓN (GPS) ---
@@ -247,7 +288,7 @@ const recibirMensaje = async (req, res) => {
                     }
                 };
                 await axios.post(`https://graph.facebook.com/v17.0/${process.env.WHATSAPP_PHONE_ID}/messages`, dataBotonesTurno, { headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` } });
-                return res.sendStatus(200);
+                return;
             }
         }
 
@@ -255,12 +296,18 @@ const recibirMensaje = async (req, res) => {
         if (message.type === 'text') {
             const textoRecibido = message.text.body;
 
+            // 🛑 FILTRAR AUTO-RESPUESTAS PARA NO ENTRAR EN BUCLE
+            if (esRespuestaAutomatica(textoRecibido)) {
+                console.log(`🤖 Auto-respuesta de contestador detectada de ${numeroCliente}. Ignorada exitosamente.`);
+                return;
+            }
+
             if (pedidosEsperandoDireccion.has(numeroCliente)) {
                 let direccionMejorada = textoRecibido.trim();
                 
                 if (direccionMejorada.length < 5) {
                     await enviarMensaje(numeroCliente, "🛑 *Falta tu dirección.*\n\nLa dirección que ingresaste es demasiado corta. Es obligatorio que nos pases tu calle y número (Ej: Belgrano 1024) o envíes tu ubicación por GPS (📍) para poder entregar tu pedido.");
-                    return res.sendStatus(200);
+                    return;
                 }
 
                 if (!direccionMejorada.toLowerCase().includes('tres lomas')) {
@@ -294,7 +341,7 @@ const recibirMensaje = async (req, res) => {
                     }
                 };
                 await axios.post(`https://graph.facebook.com/v17.0/${process.env.WHATSAPP_PHONE_ID}/messages`, dataBotonesTurno, { headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` } });
-                return res.sendStatus(200); 
+                return;
             }
 
             if (textoRecibido.toLowerCase().includes('quiero pedir la promo:')) {
@@ -311,12 +358,12 @@ const recibirMensaje = async (req, res) => {
                     console.error("Error buscando promo por texto:", errorPromo);
                 }
                 await enviarMenuRubros(numeroCliente);
-                return res.sendStatus(200);
+                return;
             }
 
-            // Fallback: Muestra el menú para cualquier texto ("Hola", "Buen dia", etc)
+            // Fallback: Muestra el menú para saludos comunes
             await enviarMenuRubros(numeroCliente);
-            return res.sendStatus(200);
+            return;
         }
 
         // --- 3. MANEJO DE IMÁGENES (OCR INTELIGENTE) ---
@@ -363,7 +410,7 @@ const recibirMensaje = async (req, res) => {
                     await enviarMensaje(numeroCliente, "Error al leer la foto. Un asesor validará el pago manualmente.");
                     pedidosEsperandoComprobante.delete(numeroCliente);
                 }
-                return res.sendStatus(200);
+                return;
             }
         }
 
@@ -407,16 +454,15 @@ const recibirMensaje = async (req, res) => {
                 if (hayProblemasDeStock) {
                     mensajeStockFaltante += "\nPor favor, ingresá nuevamente al catálogo y armá tu carrito ajustando las cantidades. ¡Perdón por las molestias! 🙏";
                     await enviarMensaje(numeroCliente, mensajeStockFaltante);
-                    return res.sendStatus(200);
+                    return;
                 }
 
                 await pool.query(`INSERT INTO clientes (whatsapp_id, nombre) VALUES ($1, $2) ON CONFLICT (whatsapp_id) DO NOTHING`, [numeroCliente, 'Cliente WhatsApp']);
                 
-                if (detallesParaInsertar.length === 0) return res.sendStatus(200);
+                if (detallesParaInsertar.length === 0) return;
                 
                 const totalCarrito = subtotal;
 
-                // Guardamos los datos de forma temporal
                 const datosTemporales = {
                     subtotal: subtotal,
                     total: totalCarrito,
@@ -447,7 +493,7 @@ const recibirMensaje = async (req, res) => {
             } catch (errorBD) {
                 console.error("Error BD Carrito:", errorBD);
             }
-            return res.sendStatus(200);
+            return;
         }
 
         // --- 5. CAPTURA DE BOTONES Y LISTAS INTERACTIVAS ---
@@ -456,13 +502,13 @@ const recibirMensaje = async (req, res) => {
 
             if (opcion === 'ver_menu_rubros') {
                 await enviarMenuRubros(numeroCliente);
-                return res.sendStatus(200);
+                return;
             }
 
             if (opcion.startsWith('rubro_')) {
                 const rubroElegido = opcion.replace('rubro_', '');
                 await enviarMenuCategorias(numeroCliente, rubroElegido);
-                return res.sendStatus(200);
+                return;
             }
 
             if (opcion.startsWith('cat_')) {
@@ -486,7 +532,7 @@ const recibirMensaje = async (req, res) => {
                     } catch (errorFlyer) {
                         await enviarMensaje(numeroCliente, "🍷 *Catálogo de Bebidas*\n\nPara hacer tu pedido, escribile directo a nuestro asesor acá:\nhttps://api.whatsapp.com/send?phone=5492392689864&text=¡Hola!%20Quiero%20pedir%20una%20bebida%20por%20acá");
                     }
-                    return res.sendStatus(200);
+                    return;
                 }
 
                 try {
@@ -536,13 +582,13 @@ const recibirMensaje = async (req, res) => {
                 } catch (errorCatalogo) {
                     console.error("Error enviando productos de categoría:", errorCatalogo.response?.data || errorCatalogo.message);
                 }
-                return res.sendStatus(200); 
+                return;
             }
 
             if (opcion === 'entrega_domicilio') {
                 if (!pedidosEsperandoDireccion.has(numeroCliente)) return await enviarMensaje(numeroCliente, "La sesión expiró, por favor reenviá tu carrito.");
                 await enviarMensaje(numeroCliente, "¡Perfecto! 🚚\n\nPara el envío, podés hacer dos cosas:\n1️⃣ *Escribirnos tu dirección* (Ej: Belgrano 1024)\n2️⃣ Tocar el 📎 (clip) abajo y enviarnos tu *Ubicación actual* de WhatsApp para mayor precisión.");
-                return res.sendStatus(200);
+                return;
             }
 
             if (opcion === 'retiro_deposito') {
@@ -584,7 +630,7 @@ const recibirMensaje = async (req, res) => {
                     }
                 };
                 await axios.post(`https://graph.facebook.com/v17.0/${process.env.WHATSAPP_PHONE_ID}/messages`, dataMenuPago, { headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` } });
-                return res.sendStatus(200);
+                return;
             }
 
             if (opcion === 'reparto_normal' || opcion === 'envio_full') {
@@ -636,22 +682,20 @@ const recibirMensaje = async (req, res) => {
                     }
                 };
                 await axios.post(`https://graph.facebook.com/v17.0/${process.env.WHATSAPP_PHONE_ID}/messages`, dataMenuPago, { headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` } });
-                return res.sendStatus(200);
+                return;
             }
 
-            // --- 6. PASO FINAL: SELECCIÓN DE PAGO E INSERCIÓN REAL EN BASE DE DATOS ---
+            // --- 6. PASO FINAL: SELECCIÓN DE PAGO E INSERCIÓN EN BASE DE DATOS ---
             if (opcion === 'pago_transferencia' || opcion === 'pago_efectivo') {
                 const datosTemp = pedidosEsperandoPago.get(numeroCliente);
                 if (!datosTemp) return await enviarMensaje(numeroCliente, "Hubo un problema con tu sesión de pago. Por favor reenviá tu carrito.");
 
-                // CREACIÓN OFICIAL DEL PEDIDO EN SUPABASE
                 const resPedido = await pool.query(
                     `INSERT INTO pedidos (whatsapp_id, estado, total_compra, direccion) VALUES ($1, $2, $3, $4) RETURNING id_pedido`,
                     [numeroCliente, datosTemp.estadoBD, datosTemp.total, datosTemp.direccion]
                 );
                 const idNuevoPedido = resPedido.rows[0].id_pedido;
 
-                // INSERCIÓN DE LOS PRODUCTOS DEL CARRITO
                 for (let detalle of datosTemp.detalles) {
                     await pool.query(
                         `INSERT INTO detalle_pedidos (id_pedido, id_producto, cantidad, precio_congelado) VALUES ($1, $2, $3, $4)`,
@@ -686,14 +730,11 @@ const recibirMensaje = async (req, res) => {
                     await enviarMensaje(numeroCliente, `💵 Pedido registrado para pagar en efectivo ($${datosTemp.total}). ¡Ya lo estamos armando!`);
                     await dispararEnvioFactura(idNuevoPedido, numeroCliente);
                 }
-                return res.sendStatus(200);
+                return;
             }
         }
-        
-        res.sendStatus(200);
     } catch (e) {
         console.error('Error general webhook:', e);
-        res.sendStatus(200);
     }
 };
 
