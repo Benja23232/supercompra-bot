@@ -18,6 +18,16 @@ export default function ArmarPedido() {
 
   const [productosMarcados, setProductosMarcados] = useState<Record<string, boolean>>({});
 
+  // --- ESTADOS PARA EDICIÓN EN VIVO ---
+  const [editandoCliente, setEditandoCliente] = useState(false);
+  const [editNombre, setEditNombre] = useState('');
+  const [editTelefono, setEditTelefono] = useState('');
+  const [editDireccion, setEditDireccion] = useState('');
+
+  const [inventarioProductos, setInventarioProductos] = useState<any[]>([]);
+  const [busqProdNuevo, setBusqProdNuevo] = useState('');
+  const [agregandoProducto, setAgregandoProducto] = useState(false);
+
   useEffect(() => {
     const rol = localStorage.getItem('rolUsuario');
     if (!rol) {
@@ -59,11 +69,15 @@ export default function ArmarPedido() {
         }
 
         setPedido(dataPedido);
+        setEditNombre(dataPedido.nombre_cliente || '');
+        setEditTelefono(dataPedido.whatsapp_id || '');
+        setEditDireccion(dataPedido.direccion || '');
       }
 
       const { data: dataDetalles } = await supabase
         .from('detalle_pedidos')
         .select(`
+          id_detalle,
           cantidad, 
           precio_congelado, 
           id_producto,
@@ -72,6 +86,16 @@ export default function ArmarPedido() {
         .eq('id_pedido', id);
 
       if (dataDetalles) setDetalles(dataDetalles);
+
+      // Traer inventario para poder agregar productos nuevos si es necesario
+      const { data: dataInv } = await supabase
+        .from('productos')
+        .select('*')
+        .eq('activo', true)
+        .order('nombre', { ascending: true });
+
+      if (dataInv) setInventarioProductos(dataInv);
+
       setLoading(false);
     }
 
@@ -85,6 +109,133 @@ export default function ArmarPedido() {
     }));
   };
 
+  // --- GUARDAR CAMBIOS DE CLIENTE Y DIRECCIÓN ---
+  const guardarDatosCliente = async () => {
+    const { error } = await supabase
+      .from('pedidos')
+      .update({
+        direccion: editDireccion.trim()
+      })
+      .eq('id_pedido', id);
+
+    if (error) {
+      alert("Error al actualizar la dirección.");
+      console.error(error);
+      return;
+    }
+
+    // Si cambió el teléfono o nombre, actualizamos en clientes
+    if (editTelefono.trim()) {
+      await supabase
+        .from('clientes')
+        .upsert({ whatsapp_id: editTelefono.trim(), nombre: editNombre.trim() }, { onConflict: 'whatsapp_id' });
+    }
+
+    setPedido({
+      ...pedido,
+      nombre_cliente: editNombre.trim(),
+      whatsapp_id: editTelefono.trim(),
+      direccion: editDireccion.trim()
+    });
+
+    setEditandoCliente(false);
+    alert("✅ Datos actualizados correctamente.");
+  };
+
+  // --- MODIFICAR CANTIDAD DE UN ÍTEM EN EL PEDIDO ---
+  const cambiarCantidadItem = async (idDetalle: string, idProducto: string, delta: number, cantidadActual: number) => {
+    const nuevaCantidad = cantidadActual + delta;
+    if (nuevaCantidad <= 0) {
+      eliminarItem(idDetalle);
+      return;
+    }
+
+    // Actualizar en detalle_pedidos
+    const { error } = await supabase
+      .from('detalle_pedidos')
+      .update({ cantidad: nuevaCantidad })
+      .eq('id_detalle', idDetalle);
+
+    if (error) {
+      alert("Error al modificar la cantidad.");
+      return;
+    }
+
+    // Actualizar estado local
+    const nuevosDetalles = detalles.map(d => d.id_detalle === idDetalle ? { ...d, cantidad: nuevaCantidad } : d);
+    setDetalles(nuevosDetalles);
+
+    // Recalcular total y actualizar pedido
+    const nuevoTotal = nuevosDetalles.reduce((acc, item) => acc + (item.precio_congelado * item.cantidad), 0);
+    await supabase.from('pedidos').update({ total_compra: nuevoTotal }).eq('id_pedido', id);
+    setPedido({ ...pedido, total_compra: nuevoTotal });
+  };
+
+  // --- ELIMINAR UN ÍTEM DEL PEDIDO ---
+  const eliminarItem = async (idDetalle: string) => {
+    if (!confirm("¿Eliminar este producto del pedido?")) return;
+
+    const { error } = await supabase
+      .from('detalle_pedidos')
+      .delete()
+      .eq('id_detalle', idDetalle);
+
+    if (error) {
+      alert("Error al eliminar el producto.");
+      return;
+    }
+
+    const nuevosDetalles = detalles.filter(d => d.id_detalle !== idDetalle);
+    setDetalles(nuevosDetalles);
+
+    const nuevoTotal = nuevosDetalles.reduce((acc, item) => acc + (item.precio_congelado * item.cantidad), 0);
+    await supabase.from('pedidos').update({ total_compra: nuevoTotal }).eq('id_pedido', id);
+    setPedido({ ...pedido, total_compra: nuevoTotal });
+  };
+
+  // --- AGREGAR NUEVO PRODUCTO AL PEDIDO EN VIVO ---
+  const agregarProductoAlPedido = async (prod: any) => {
+    // Verificar si ya está en el detalle
+    const existente = detalles.find(d => d.id_producto === prod.id_producto);
+    if (existente) {
+      cambiarCantidadItem(existente.id_detalle, prod.id_producto, 1, existente.cantidad);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from('detalle_pedidos')
+      .insert([{
+        id_pedido: id,
+        id_producto: prod.id_producto,
+        cantidad: 1,
+        precio_congelado: prod.precio
+      }])
+      .select(`
+        id_detalle,
+        cantidad, 
+        precio_congelado, 
+        id_producto,
+        productos (nombre, stock_fisico)
+      `)
+      .single();
+
+    if (error) {
+      alert("Error al agregar producto.");
+      console.error(error);
+      return;
+    }
+
+    const nuevosDetalles = [...detalles, data];
+    setDetalles(nuevosDetalles);
+
+    const nuevoTotal = nuevosDetalles.reduce((acc, item) => acc + (item.precio_congelado * item.cantidad), 0);
+    await supabase.from('pedidos').update({ total_compra: nuevoTotal }).eq('id_pedido', id);
+    setPedido({ ...pedido, total_compra: nuevoTotal });
+    setAgregandoProducto(false);
+    setBusqProdNuevo('');
+  };
+
+  // --- CONFIRMAR ARMADO Y DESCONTAR STOCK ---
   const confirmarArmadoYDescontar = async () => {
     const confirmar = window.confirm("¿Estás seguro de cerrar el pedido? Esto descontará el stock y le avisará al cliente por WhatsApp que ya está listo.");
     if (!confirmar) return;
@@ -107,7 +258,6 @@ export default function ArmarPedido() {
         .update({ estado: 'Armado' })
         .eq('id_pedido', id);
 
-      // Acá llama al puente que armamos en el paso 1
       await fetch('/api/notificar-pedido', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -151,19 +301,10 @@ export default function ArmarPedido() {
 
   const badge = obtenerBadgeEnvio(pedido.estado);
   const todosListos = detalles.length > 0 && detalles.every(item => productosMarcados[item.id_producto]);
+  const productosFiltradosAgregado = inventarioProductos.filter(p => p.nombre?.toLowerCase().includes(busqProdNuevo.toLowerCase().trim()));
 
   return (
-    <main style={{ 
-      padding: '20px', 
-      backgroundColor: '#0a0a0a', 
-      minHeight: '100vh', 
-      color: '#f4f4f5',
-      fontFamily: 'sans-serif',
-      boxSizing: 'border-box',
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center'
-    }}>
+    <main style={{ padding: '20px', backgroundColor: '#0a0a0a', minHeight: '100vh', color: '#f4f4f5', fontFamily: 'sans-serif', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
       <div style={{ width: '100%', maxWidth: '800px' }}>
         
         {/* Enlace para Volver */}
@@ -183,43 +324,89 @@ export default function ArmarPedido() {
           </span>
         </div>
 
-        {/* Tarjeta de Información del Cliente */}
-        <div style={{ marginBottom: '25px', backgroundColor: '#121214', padding: '20px', borderRadius: '12px', border: '1px solid #27272a', boxShadow: '0 4px 6px rgba(0,0,0,0.4)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <p style={{ margin: 0, color: '#f4f4f5', fontSize: '1.05rem' }}>
-            👤 <strong>Cliente:</strong> {pedido.nombre_cliente || 'Sin nombre'}
-          </p>
-          <p style={{ margin: 0, color: '#f4f4f5', fontSize: '1rem' }}>
-            📞 <strong>Teléfono:</strong> +{pedido.whatsapp_id || pedido.telefono || 'No especificado'}
-          </p>
-          <p style={{ margin: 0, color: '#f4f4f5', fontSize: '1rem' }}>
-            📍 <strong>Dirección de entrega:</strong> {pedido.direccion || 'No especificada'}
-          </p>
-          <p style={{ margin: 0, color: '#f4f4f5', fontSize: '1rem' }}>
-            ⚙️ <strong>Estado actual:</strong> {pedido.estado} <span style={{ color: '#10b981', fontSize: '0.85rem', fontWeight: 'bold' }}>(⚡ En proceso automático)</span>
-          </p>
-          <p style={{ margin: 0, color: '#f4f4f5', fontSize: '1.1rem' }}>
-            💰 <strong>Total abonado:</strong> <span style={{ color: '#10b981', fontWeight: 'bold' }}>${pedido.total_compra}</span>
-          </p>
+        {/* Tarjeta de Información del Cliente (Editable) */}
+        <div style={{ marginBottom: '25px', backgroundColor: '#121214', padding: '20px', borderRadius: '12px', border: '1px solid #27272a', boxShadow: '0 4px 6px rgba(0,0,0,0.4)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #27272a', paddingBottom: '10px' }}>
+            <span style={{ fontWeight: 'bold', fontSize: '1.1rem', color: '#f4f4f5' }}>👤 Datos del Cliente y Envío</span>
+            {!editandoCliente ? (
+              <button onClick={() => setEditandoCliente(true)} style={{ backgroundColor: '#2563eb', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '0.8rem', fontWeight: 'bold', cursor: 'pointer' }}>
+                ✏️ Editar Datos
+              </button>
+            ) : (
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button onClick={guardarDatosCliente} style={{ backgroundColor: '#16a34a', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '0.8rem', fontWeight: 'bold', cursor: 'pointer' }}>
+                  💾 Guardar
+                </button>
+                <button onClick={() => setEditandoCliente(false)} style={{ backgroundColor: '#27272a', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '0.8rem', fontWeight: 'bold', cursor: 'pointer' }}>
+                  Cancelar
+                </button>
+              </div>
+            )}
+          </div>
+
+          {!editandoCliente ? (
+            <>
+              <p style={{ margin: 0, color: '#f4f4f5', fontSize: '1.05rem' }}><strong>Cliente:</strong> {pedido.nombre_cliente || 'Sin nombre'}</p>
+              <p style={{ margin: 0, color: '#f4f4f5', fontSize: '1rem' }}><strong>Teléfono:</strong> {pedido.whatsapp_id || 'No especificado'}</p>
+              <p style={{ margin: 0, color: '#f4f4f5', fontSize: '1rem' }}><strong>Dirección:</strong> {pedido.direccion || 'No especificada'}</p>
+            </>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '5px' }}>
+              <div>
+                <label style={{ fontSize: '0.8rem', color: '#a1a1aa', display: 'block', marginBottom: '3px' }}>Nombre:</label>
+                <input type="text" value={editNombre} onChange={(e) => setEditNombre(e.target.value)} style={{ width: '100%', padding: '8px', backgroundColor: '#09090b', border: '1px solid #27272a', color: '#fff', borderRadius: '6px', outline: 'none' }} />
+              </div>
+              <div>
+                <label style={{ fontSize: '0.8rem', color: '#a1a1aa', display: 'block', marginBottom: '3px' }}>Teléfono / WhatsApp:</label>
+                <input type="text" value={editTelefono} onChange={(e) => setEditTelefono(e.target.value)} style={{ width: '100%', padding: '8px', backgroundColor: '#09090b', border: '1px solid #27272a', color: '#fff', borderRadius: '6px', outline: 'none' }} />
+              </div>
+              <div>
+                <label style={{ fontSize: '0.8rem', color: '#a1a1aa', display: 'block', marginBottom: '3px' }}>Dirección:</label>
+                <input type="text" value={editDireccion} onChange={(e) => setEditDireccion(e.target.value)} style={{ width: '100%', padding: '8px', backgroundColor: '#09090b', border: '1px solid #27272a', color: '#fff', borderRadius: '6px', outline: 'none' }} />
+              </div>
+            </div>
+          )}
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '5px', borderTop: '1px solid #27272a', paddingTop: '10px' }}>
+            <span style={{ color: '#a1a1aa', fontSize: '0.9rem' }}>Estado: {pedido.estado}</span>
+            <span style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#10b981' }}>Total: ${pedido.total_compra}</span>
+          </div>
         </div>
 
-        {/* Subtítulo de Picking */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-          <h2 style={{ fontSize: '1.2rem', margin: 0, color: '#f4f4f5' }}>Lista de Picking (Marcar productos recolectados):</h2>
-          {todosListos && (
-            <span style={{ color: '#4ade80', fontWeight: 'bold', backgroundColor: '#064e3b', border: '1px solid #065f46', padding: '5px 12px', borderRadius: '15px', fontSize: '0.85rem' }}>
-              ✅ ¡Pedido completo!
-            </span>
-          )}
+        {/* Subtítulo de Picking y Botón Agregar Producto */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', flexWrap: 'wrap', gap: '10px' }}>
+          <h2 style={{ fontSize: '1.2rem', margin: 0, color: '#f4f4f5' }}>Lista de Picking y Ítems:</h2>
+          <button onClick={() => setAgregandoProducto(!agregandoProducto)} style={{ backgroundColor: '#4f46e5', color: '#fff', border: 'none', padding: '8px 14px', borderRadius: '8px', fontWeight: 'bold', fontSize: '0.85rem', cursor: 'pointer' }}>
+            {agregandoProducto ? '✖ Cerrar buscador' : '➕ Agregar Producto'}
+          </button>
         </div>
+
+        {/* Buscador para Agregar Producto en Vivo */}
+        {agregandoProducto && (
+          <div style={{ backgroundColor: '#18181b', padding: '15px', borderRadius: '10px', border: '1px solid #3f3f46', marginBottom: '20px' }}>
+            <input type="text" placeholder="🔍 Buscar producto en el inventario..." value={busqProdNuevo} onChange={(e) => setBusqProdNuevo(e.target.value)} style={{ width: '100%', padding: '10px', backgroundColor: '#09090b', border: '1px solid #27272a', color: '#fff', borderRadius: '6px', outline: 'none', marginBottom: '10px' }} />
+            <div style={{ maxHeight: '150px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '5px' }}>
+              {productosFiltradosAgregado.map(p => (
+                <div key={p.id_producto} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#09090b', padding: '8px 12px', borderRadius: '6px' }}>
+                  <span style={{ fontSize: '0.9rem', color: '#f4f4f5' }}>{p.nombre} (${p.precio})</span>
+                  <button onClick={() => agregarProductoAlPedido(p)} style={{ backgroundColor: '#10b981', color: '#fff', border: 'none', padding: '4px 10px', borderRadius: '4px', fontSize: '0.8rem', fontWeight: 'bold', cursor: 'pointer' }}>
+                    + Añadir
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Tabla / Contenedor de Productos */}
         <div style={{ backgroundColor: '#121214', borderRadius: '12px', border: '1px solid #27272a', overflow: 'hidden', marginBottom: '25px', boxShadow: '0 4px 6px rgba(0,0,0,0.4)' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ borderBottom: '1px solid #27272a', backgroundColor: '#18181b', color: '#a1a1aa', fontSize: '0.85rem', textTransform: 'uppercase' }}>
-                <th style={{ textAlign: 'center', padding: '12px', width: '70px' }}>Listo</th>
+                <th style={{ textAlign: 'center', padding: '12px', width: '60px' }}>Listo</th>
                 <th style={{ textAlign: 'left', padding: '12px' }}>Producto</th>
-                <th style={{ textAlign: 'center', padding: '12px', width: '100px' }}>Cantidad</th>
+                <th style={{ textAlign: 'center', padding: '12px', width: '140px' }}>Cantidad</th>
+                <th style={{ textAlign: 'center', padding: '12px', width: '70px' }}>Acción</th>
               </tr>
             </thead>
             <tbody>
@@ -227,7 +414,7 @@ export default function ArmarPedido() {
                 const estaMarcado = productosMarcados[item.id_producto];
                 return (
                   <tr 
-                    key={index} 
+                    key={item.id_detalle || index} 
                     style={{ 
                       borderBottom: index < detalles.length - 1 ? '1px solid #27272a' : 'none', 
                       backgroundColor: estaMarcado ? '#09090b' : '#121214', 
@@ -245,9 +432,19 @@ export default function ArmarPedido() {
                     </td>
                     <td style={{ padding: '14px', textDecoration: estaMarcado ? 'line-through' : 'none', color: estaMarcado ? '#71717a' : '#f4f4f5', fontWeight: '500' }}>
                       {item.productos?.nombre || 'Producto desconocido'}
+                      <div style={{ fontSize: '0.75rem', color: '#10b981' }}>Subtotal: ${item.precio_congelado * item.cantidad}</div>
                     </td>
-                    <td style={{ textAlign: 'center', padding: '14px', textDecoration: estaMarcado ? 'line-through' : 'none', color: estaMarcado ? '#71717a' : '#f4f4f5' }}>
-                      <strong style={{ fontSize: '1.1rem' }}>{item.cantidad}</strong>
+                    <td style={{ textAlign: 'center', padding: '14px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                        <button onClick={() => cambiarCantidadItem(item.id_detalle, item.id_producto, -1, item.cantidad)} style={{ backgroundColor: '#27272a', color: '#fff', border: 'none', width: '26px', height: '26px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>-</button>
+                        <span style={{ fontSize: '1rem', fontWeight: 'bold', minWidth: '20px' }}>{item.cantidad}</span>
+                        <button onClick={() => cambiarCantidadItem(item.id_detalle, item.id_producto, 1, item.cantidad)} style={{ backgroundColor: '#27272a', color: '#fff', border: 'none', width: '26px', height: '26px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>+</button>
+                      </div>
+                    </td>
+                    <td style={{ textAlign: 'center', padding: '14px' }}>
+                      <button onClick={() => eliminarItem(item.id_detalle)} title="Eliminar ítem" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: '1.1rem' }}>
+                        🗑️
+                      </button>
                     </td>
                   </tr>
                 );
@@ -257,27 +454,25 @@ export default function ArmarPedido() {
         </div>
 
         {/* Botón de Confirmación */}
-        {todosListos && (
-          <button 
-            onClick={confirmarArmadoYDescontar}
-            disabled={procesando}
-            style={{ 
-              width: '100%', 
-              padding: '16px', 
-              backgroundColor: procesando ? '#3f3f46' : '#16a34a', 
-              color: '#fff', 
-              border: 'none', 
-              borderRadius: '10px', 
-              fontSize: '1.05rem', 
-              fontWeight: 'bold', 
-              cursor: procesando ? 'not-allowed' : 'pointer',
-              boxShadow: '0 4px 12px rgba(22, 163, 74, 0.3)',
-              transition: 'background-color 0.2s'
-            }}
-          >
-            {procesando ? 'Descontando stock...' : '📦 Confirmar Armado y Descontar Stock'}
-          </button>
-        )}
+        <button 
+          onClick={confirmarArmadoYDescontar}
+          disabled={procesando}
+          style={{ 
+            width: '100%', 
+            padding: '16px', 
+            backgroundColor: procesando ? '#3f3f46' : '#16a34a', 
+            color: '#fff', 
+            border: 'none', 
+            borderRadius: '10px', 
+            fontSize: '1.05rem', 
+            fontWeight: 'bold', 
+            cursor: procesando ? 'not-allowed' : 'pointer',
+            boxShadow: '0 4px 12px rgba(22, 163, 74, 0.3)',
+            transition: 'background-color 0.2s'
+          }}
+        >
+          {procesando ? 'Descontando stock...' : '📦 Confirmar Armado y Descontar Stock'}
+        </button>
 
       </div>
     </main>
