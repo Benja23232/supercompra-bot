@@ -54,18 +54,10 @@ export default function ArmarPedido() {
 
           const nuevoEstadoAuto = `En Proceso${sufijoTurno}`;
           
-          await supabase
-            .from('pedidos')
-            .update({ estado: nuevoEstadoAuto })
-            .eq('id_pedido', id);
-
+          await supabase.from('pedidos').update({ estado: nuevoEstadoAuto }).eq('id_pedido', id);
           dataPedido.estado = nuevoEstadoAuto;
           
-          await logAuditoria(
-            'Depósito', 
-            'Inicio de Armado', 
-            `Abrió el pedido #${String(id).slice(0, 8)} y pasó automáticamente a En Proceso.`
-          );
+          await logAuditoria('Depósito', 'Inicio de Armado', `Abrió el pedido #${String(id).slice(0, 8)} y pasó a En Proceso.`);
         }
 
         setPedido(dataPedido);
@@ -76,18 +68,11 @@ export default function ArmarPedido() {
 
       const { data: dataDetalles } = await supabase
         .from('detalle_pedidos')
-        .select(`
-          id_detalle,
-          cantidad, 
-          precio_congelado, 
-          id_producto,
-          productos (nombre, stock_fisico)
-        `)
+        .select(`id_detalle, cantidad, precio_congelado, id_producto, productos (nombre, stock_fisico)`)
         .eq('id_pedido', id);
 
       if (dataDetalles) setDetalles(dataDetalles);
 
-      // Traer inventario para poder agregar productos nuevos si es necesario
       const { data: dataInv } = await supabase
         .from('productos')
         .select('*')
@@ -95,7 +80,6 @@ export default function ArmarPedido() {
         .order('nombre', { ascending: true });
 
       if (dataInv) setInventarioProductos(dataInv);
-
       setLoading(false);
     }
 
@@ -103,194 +87,82 @@ export default function ArmarPedido() {
   }, [id, autorizado]);
 
   const toggleMarca = (idProducto: string) => {
-    setProductosMarcados((prev) => ({
-      ...prev,
-      [idProducto]: !prev[idProducto]
-    }));
+    setProductosMarcados((prev) => ({ ...prev, [idProducto]: !prev[idProducto] }));
   };
 
-  // --- GUARDAR CAMBIOS DE CLIENTE Y DIRECCIÓN ---
   const guardarDatosCliente = async () => {
-    const { error } = await supabase
-      .from('pedidos')
-      .update({
-        direccion: editDireccion.trim()
-      })
-      .eq('id_pedido', id);
-
-    if (error) {
-      alert("Error al actualizar la dirección.");
-      console.error(error);
-      return;
-    }
-
-    // Si cambió el teléfono o nombre, actualizamos en clientes
+    await supabase.from('pedidos').update({ direccion: editDireccion.trim() }).eq('id_pedido', id);
     if (editTelefono.trim()) {
-      await supabase
-        .from('clientes')
-        .upsert({ whatsapp_id: editTelefono.trim(), nombre: editNombre.trim() }, { onConflict: 'whatsapp_id' });
+      await supabase.from('clientes').upsert({ whatsapp_id: editTelefono.trim(), nombre: editNombre.trim() }, { onConflict: 'whatsapp_id' });
     }
-
-    setPedido({
-      ...pedido,
-      nombre_cliente: editNombre.trim(),
-      whatsapp_id: editTelefono.trim(),
-      direccion: editDireccion.trim()
-    });
-
+    setPedido({ ...pedido, nombre_cliente: editNombre.trim(), whatsapp_id: editTelefono.trim(), direccion: editDireccion.trim() });
     setEditandoCliente(false);
-    alert("✅ Datos actualizados correctamente.");
   };
 
-  // --- MODIFICAR CANTIDAD DE UN ÍTEM EN EL PEDIDO ---
   const cambiarCantidadItem = async (idDetalle: string, idProducto: string, delta: number, cantidadActual: number) => {
     const nuevaCantidad = cantidadActual + delta;
-    if (nuevaCantidad <= 0) {
-      eliminarItem(idDetalle);
-      return;
-    }
+    if (nuevaCantidad <= 0) { eliminarItem(idDetalle); return; }
 
-    // Actualizar en detalle_pedidos
-    const { error } = await supabase
-      .from('detalle_pedidos')
-      .update({ cantidad: nuevaCantidad })
-      .eq('id_detalle', idDetalle);
-
-    if (error) {
-      alert("Error al modificar la cantidad.");
-      return;
-    }
-
-    // Actualizar estado local
+    await supabase.from('detalle_pedidos').update({ cantidad: nuevaCantidad }).eq('id_detalle', idDetalle);
     const nuevosDetalles = detalles.map(d => d.id_detalle === idDetalle ? { ...d, cantidad: nuevaCantidad } : d);
     setDetalles(nuevosDetalles);
 
-    // Recalcular total y actualizar pedido
     const nuevoTotal = nuevosDetalles.reduce((acc, item) => acc + (item.precio_congelado * item.cantidad), 0);
     await supabase.from('pedidos').update({ total_compra: nuevoTotal }).eq('id_pedido', id);
     setPedido({ ...pedido, total_compra: nuevoTotal });
   };
 
-  // --- ELIMINAR UN ÍTEM DEL PEDIDO ---
   const eliminarItem = async (idDetalle: string) => {
     if (!confirm("¿Eliminar este producto del pedido?")) return;
-
-    const { error } = await supabase
-      .from('detalle_pedidos')
-      .delete()
-      .eq('id_detalle', idDetalle);
-
-    if (error) {
-      alert("Error al eliminar el producto.");
-      return;
-    }
-
+    await supabase.from('detalle_pedidos').delete().eq('id_detalle', idDetalle);
     const nuevosDetalles = detalles.filter(d => d.id_detalle !== idDetalle);
     setDetalles(nuevosDetalles);
-
     const nuevoTotal = nuevosDetalles.reduce((acc, item) => acc + (item.precio_congelado * item.cantidad), 0);
     await supabase.from('pedidos').update({ total_compra: nuevoTotal }).eq('id_pedido', id);
     setPedido({ ...pedido, total_compra: nuevoTotal });
   };
 
-  // --- AGREGAR NUEVO PRODUCTO AL PEDIDO EN VIVO ---
   const agregarProductoAlPedido = async (prod: any) => {
-    // Verificar si ya está en el detalle
     const existente = detalles.find(d => d.id_producto === prod.id_producto);
-    if (existente) {
-      cambiarCantidadItem(existente.id_detalle, prod.id_producto, 1, existente.cantidad);
-      return;
-    }
+    if (existente) { cambiarCantidadItem(existente.id_detalle, prod.id_producto, 1, existente.cantidad); return; }
 
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from('detalle_pedidos')
-      .insert([{
-        id_pedido: id,
-        id_producto: prod.id_producto,
-        cantidad: 1,
-        precio_congelado: prod.precio
-      }])
-      .select(`
-        id_detalle,
-        cantidad, 
-        precio_congelado, 
-        id_producto,
-        productos (nombre, stock_fisico)
-      `)
-      .single();
+      .insert([{ id_pedido: id, id_producto: prod.id_producto, cantidad: 1, precio_congelado: prod.precio }])
+      .select(`id_detalle, cantidad, precio_congelado, id_producto, productos (nombre, stock_fisico)`).single();
 
-    if (error) {
-      alert("Error al agregar producto.");
-      console.error(error);
-      return;
+    if (data) {
+      const nuevosDetalles = [...detalles, data];
+      setDetalles(nuevosDetalles);
+      const nuevoTotal = nuevosDetalles.reduce((acc, item) => acc + (item.precio_congelado * item.cantidad), 0);
+      await supabase.from('pedidos').update({ total_compra: nuevoTotal }).eq('id_pedido', id);
+      setPedido({ ...pedido, total_compra: nuevoTotal });
     }
-
-    const nuevosDetalles = [...detalles, data];
-    setDetalles(nuevosDetalles);
-
-    const nuevoTotal = nuevosDetalles.reduce((acc, item) => acc + (item.precio_congelado * item.cantidad), 0);
-    await supabase.from('pedidos').update({ total_compra: nuevoTotal }).eq('id_pedido', id);
-    setPedido({ ...pedido, total_compra: nuevoTotal });
-    setAgregandoProducto(false);
-    setBusqProdNuevo('');
   };
 
-  // --- CONFIRMAR ARMADO Y DESCONTAR STOCK ---
   const confirmarArmadoYDescontar = async () => {
-    const confirmar = window.confirm("¿Estás seguro de cerrar el pedido? Esto descontará el stock y le avisará al cliente por WhatsApp que ya está listo.");
-    if (!confirmar) return;
-
+    if (!window.confirm("¿Confirmar armado y descontar stock del sistema?")) return;
     setProcesando(true);
-
     try {
       for (const item of detalles) {
         const stockActual = item.productos?.stock_fisico || 0;
         const nuevoStock = stockActual - item.cantidad;
-
-        await supabase
-          .from('productos')
-          .update({ stock_fisico: nuevoStock >= 0 ? nuevoStock : 0 }) 
-          .eq('id_producto', item.id_producto);
+        await supabase.from('productos').update({ stock_fisico: nuevoStock >= 0 ? nuevoStock : 0 }).eq('id_producto', item.id_producto);
       }
-
-      await supabase
-        .from('pedidos')
-        .update({ estado: 'Armado' })
-        .eq('id_pedido', id);
-
-      await fetch('/api/notificar-pedido', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id_pedido: id })
-      }).catch(err => console.error("Error silencioso al notificar por WhatsApp:", err));
-
-      await logAuditoria(
-        'Depósito', 
-        'Picking Completado', 
-        `Completó el armado del pedido #${String(id).slice(0, 8)}, descontó ${detalles.length} productos y notificó al cliente.`
-      );
-
-      alert("✅ ¡Pedido armado, stock descontado y cliente notificado con éxito!");
+      await supabase.from('pedidos').update({ estado: 'Armado' }).eq('id_pedido', id);
+      await logAuditoria('Depósito', 'Picking Completado', `Pedido #${String(id).slice(0, 8)} armado y descontado.`);
+      alert("✅ ¡Pedido armado y stock descontado con éxito!");
       router.push('/pedidos'); 
-
     } catch (error) {
-      console.error("Error al procesar:", error);
-      alert("Hubo un error al descontar el stock o procesar el pedido.");
+      alert("Hubo un error al procesar el pedido.");
     } finally {
       setProcesando(false);
     }
   };
 
-  if (!autorizado) {
-    return (
-      <main style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', backgroundColor: '#0a0a0a', color: '#9ca3af' }}>
-        <p style={{ fontSize: '1.2rem', fontWeight: 'bold' }}>Verificando accesos...</p>
-      </main>
-    );
-  }
-
-  if (loading) return <div style={{ textAlign: 'center', padding: '40px', color: '#a1a1aa', fontSize: '1.1rem', backgroundColor: '#0a0a0a', minHeight: '100vh' }}>Cargando detalles para armado...</div>;
-  if (!pedido) return <div style={{ textAlign: 'center', padding: '40px', color: '#a1a1aa', fontSize: '1.1rem', backgroundColor: '#0a0a0a', minHeight: '100vh' }}>No se encontró el pedido.</div>;
+  if (!autorizado) return <main style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', backgroundColor: '#0a0a0a', color: '#9ca3af' }}><p>Verificando...</p></main>;
+  if (loading) return <div style={{ textAlign: 'center', padding: '40px', color: '#a1a1aa' }}>Cargando detalles...</div>;
+  if (!pedido) return <div style={{ textAlign: 'center', padding: '40px', color: '#a1a1aa' }}>No se encontró el pedido.</div>;
 
   const obtenerBadgeEnvio = (estado: string) => {
     if (estado?.includes('Full')) return { texto: '🚀 ENVÍO FULL', fondo: '#3b0764', color: '#e9d5ff', borde: '#6b21a8' };
@@ -304,147 +176,136 @@ export default function ArmarPedido() {
   const productosFiltradosAgregado = inventarioProductos.filter(p => p.nombre?.toLowerCase().includes(busqProdNuevo.toLowerCase().trim()));
 
   return (
-    <main style={{ padding: '20px', backgroundColor: '#0a0a0a', minHeight: '100vh', color: '#f4f4f5', fontFamily: 'sans-serif', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-      <div style={{ width: '100%', maxWidth: '800px' }}>
+    <main className="layout-armado">
+      <style>{`
+        /* --- ESTILOS RESPONSIVOS PARA VISTA DE ARMADO --- */
+        .layout-armado { padding: 20px; background-color: #0a0a0a; min-height: 100vh; color: #f4f4f5; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; }
+        .contenedor-max { width: 100%; max-width: 800px; }
         
-        {/* Enlace para Volver */}
+        .encabezado { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 15px; }
+        .titulo { font-size: 1.8rem; margin: 0; color: #f4f4f5; }
+        .badge-turno { padding: 6px 14px; border-radius: 20px; font-weight: bold; font-size: 0.85rem; }
+        
+        .tarjeta-info { background-color: #121214; padding: 20px; border-radius: 12px; border: 1px solid #27272a; margin-bottom: 25px; box-shadow: 0 4px 6px rgba(0,0,0,0.4); display: flex; flex-direction: column; gap: 10px; }
+        .header-info { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #27272a; padding-bottom: 10px; flex-wrap: wrap; gap: 10px; }
+        .btn-chico { border: none; padding: 6px 12px; border-radius: 6px; font-size: 0.8rem; font-weight: bold; cursor: pointer; }
+        
+        .tabla-contenedor { background-color: #121214; border-radius: 12px; border: 1px solid #27272a; margin-bottom: 25px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+        table { width: 100%; border-collapse: collapse; min-width: 500px; }
+        th { background-color: #18181b; color: #a1a1aa; padding: 12px; text-transform: uppercase; font-size: 0.85rem; text-align: left; }
+        td { padding: 14px; border-bottom: 1px solid #27272a; }
+        tr:last-child td { border-bottom: none; }
+        
+        .controles-cantidad { display: flex; align-items: center; gap: 8px; justify-content: center; }
+        .btn-cant { background-color: #27272a; color: #fff; border: none; width: 32px; height: 32px; border-radius: 6px; font-weight: bold; cursor: pointer; }
+        
+        .btn-grande { width: 100%; padding: 16px; border: none; border-radius: 10px; font-size: 1.05rem; font-weight: bold; color: #fff; cursor: pointer; transition: background-color 0.2s; box-shadow: 0 4px 12px rgba(22, 163, 74, 0.3); }
+
+        @media (max-width: 600px) {
+          .layout-armado { padding: 10px; }
+          .encabezado { flex-direction: column; align-items: stretch; text-align: center; }
+          .badge-turno { display: inline-block; text-align: center; }
+          .header-info { flex-direction: column; align-items: stretch; }
+          .header-info div { display: flex; flex-direction: column; gap: 5px; }
+          .header-info .btn-chico { width: 100%; }
+        }
+      `}</style>
+
+      <div className="contenedor-max">
         <div style={{ marginBottom: '20px' }}>
-          <Link href="/pedidos" style={{ color: '#818cf8', textDecoration: 'none', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '5px', width: 'fit-content' }}>
-            🔙 Volver a la lista de pedidos
-          </Link>
+          <Link href="/pedidos" style={{ color: '#818cf8', textDecoration: 'none', fontWeight: 'bold' }}>🔙 Volver a pedidos</Link>
         </div>
 
-        {/* Encabezado */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '15px' }}>
-          <h1 style={{ fontSize: '1.8rem', margin: 0, color: '#f4f4f5' }}>
-            Armar Pedido #{String(pedido.id_pedido).slice(0, 8)}
-          </h1>
-          <span style={{ backgroundColor: badge.fondo, color: badge.color, border: `1px solid ${badge.borde}`, padding: '6px 14px', borderRadius: '20px', fontWeight: 'bold', fontSize: '0.85rem' }}>
-            {badge.texto}
-          </span>
+        <div className="encabezado">
+          <h1 className="titulo">Armar #{String(pedido.id_pedido).slice(0, 8)}</h1>
+          <span className="badge-turno" style={{ backgroundColor: badge.fondo, color: badge.color, border: `1px solid ${badge.borde}` }}>{badge.texto}</span>
         </div>
 
-        {/* Tarjeta de Información del Cliente (Editable) */}
-        <div style={{ marginBottom: '25px', backgroundColor: '#121214', padding: '20px', borderRadius: '12px', border: '1px solid #27272a', boxShadow: '0 4px 6px rgba(0,0,0,0.4)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #27272a', paddingBottom: '10px' }}>
-            <span style={{ fontWeight: 'bold', fontSize: '1.1rem', color: '#f4f4f5' }}>👤 Datos del Cliente y Envío</span>
+        <div className="tarjeta-info">
+          <div className="header-info">
+            <span style={{ fontWeight: 'bold', fontSize: '1.1rem' }}>👤 Datos del Envío</span>
             {!editandoCliente ? (
-              <button onClick={() => setEditandoCliente(true)} style={{ backgroundColor: '#2563eb', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '0.8rem', fontWeight: 'bold', cursor: 'pointer' }}>
-                ✏️ Editar Datos
-              </button>
+              <button className="btn-chico" style={{ backgroundColor: '#2563eb', color: '#fff' }} onClick={() => setEditandoCliente(true)}>✏️ Editar Datos</button>
             ) : (
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button onClick={guardarDatosCliente} style={{ backgroundColor: '#16a34a', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '0.8rem', fontWeight: 'bold', cursor: 'pointer' }}>
-                  💾 Guardar
-                </button>
-                <button onClick={() => setEditandoCliente(false)} style={{ backgroundColor: '#27272a', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '0.8rem', fontWeight: 'bold', cursor: 'pointer' }}>
-                  Cancelar
-                </button>
+              <div>
+                <button className="btn-chico" style={{ backgroundColor: '#16a34a', color: '#fff' }} onClick={guardarDatosCliente}>💾 Guardar</button>
+                <button className="btn-chico" style={{ backgroundColor: '#27272a', color: '#fff' }} onClick={() => setEditandoCliente(false)}>Cancelar</button>
               </div>
             )}
           </div>
 
           {!editandoCliente ? (
-            <>
-              <p style={{ margin: 0, color: '#f4f4f5', fontSize: '1.05rem' }}><strong>Cliente:</strong> {pedido.nombre_cliente || 'Sin nombre'}</p>
-              <p style={{ margin: 0, color: '#f4f4f5', fontSize: '1rem' }}><strong>Teléfono:</strong> {pedido.whatsapp_id || 'No especificado'}</p>
-              <p style={{ margin: 0, color: '#f4f4f5', fontSize: '1rem' }}><strong>Dirección:</strong> {pedido.direccion || 'No especificada'}</p>
-            </>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+              <p style={{ margin: 0 }}><strong>Cliente:</strong> {pedido.nombre_cliente || 'Sin nombre'}</p>
+              <p style={{ margin: 0 }}><strong>Teléfono:</strong> {pedido.whatsapp_id || '-'}</p>
+              <p style={{ margin: 0 }}><strong>Dirección:</strong> {pedido.direccion || '-'}</p>
+            </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '5px' }}>
-              <div>
-                <label style={{ fontSize: '0.8rem', color: '#a1a1aa', display: 'block', marginBottom: '3px' }}>Nombre:</label>
-                <input type="text" value={editNombre} onChange={(e) => setEditNombre(e.target.value)} style={{ width: '100%', padding: '8px', backgroundColor: '#09090b', border: '1px solid #27272a', color: '#fff', borderRadius: '6px', outline: 'none' }} />
-              </div>
-              <div>
-                <label style={{ fontSize: '0.8rem', color: '#a1a1aa', display: 'block', marginBottom: '3px' }}>Teléfono / WhatsApp:</label>
-                <input type="text" value={editTelefono} onChange={(e) => setEditTelefono(e.target.value)} style={{ width: '100%', padding: '8px', backgroundColor: '#09090b', border: '1px solid #27272a', color: '#fff', borderRadius: '6px', outline: 'none' }} />
-              </div>
-              <div>
-                <label style={{ fontSize: '0.8rem', color: '#a1a1aa', display: 'block', marginBottom: '3px' }}>Dirección:</label>
-                <input type="text" value={editDireccion} onChange={(e) => setEditDireccion(e.target.value)} style={{ width: '100%', padding: '8px', backgroundColor: '#09090b', border: '1px solid #27272a', color: '#fff', borderRadius: '6px', outline: 'none' }} />
-              </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <input type="text" value={editNombre} onChange={e => setEditNombre(e.target.value)} placeholder="Nombre" style={{ padding: '10px', background: '#09090b', border: '1px solid #27272a', color: '#fff', borderRadius: '6px' }} />
+              <input type="text" value={editTelefono} onChange={e => setEditTelefono(e.target.value)} placeholder="Teléfono" style={{ padding: '10px', background: '#09090b', border: '1px solid #27272a', color: '#fff', borderRadius: '6px' }} />
+              <input type="text" value={editDireccion} onChange={e => setEditDireccion(e.target.value)} placeholder="Dirección" style={{ padding: '10px', background: '#09090b', border: '1px solid #27272a', color: '#fff', borderRadius: '6px' }} />
             </div>
           )}
-
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '5px', borderTop: '1px solid #27272a', paddingTop: '10px' }}>
-            <span style={{ color: '#a1a1aa', fontSize: '0.9rem' }}>Estado: {pedido.estado}</span>
+          
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '10px', borderTop: '1px solid #27272a', paddingTop: '10px' }}>
+            <span style={{ color: '#a1a1aa' }}>{pedido.estado}</span>
             <span style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#10b981' }}>Total: ${pedido.total_compra}</span>
           </div>
         </div>
 
-        {/* Subtítulo de Picking y Botón Agregar Producto */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', flexWrap: 'wrap', gap: '10px' }}>
-          <h2 style={{ fontSize: '1.2rem', margin: 0, color: '#f4f4f5' }}>Lista de Picking y Ítems:</h2>
-          <button onClick={() => setAgregandoProducto(!agregandoProducto)} style={{ backgroundColor: '#4f46e5', color: '#fff', border: 'none', padding: '8px 14px', borderRadius: '8px', fontWeight: 'bold', fontSize: '0.85rem', cursor: 'pointer' }}>
+          <h2 style={{ fontSize: '1.2rem', margin: 0 }}>Lista de Picking:</h2>
+          <button className="btn-chico" style={{ backgroundColor: '#4f46e5', color: '#fff', padding: '10px 15px' }} onClick={() => setAgregandoProducto(!agregandoProducto)}>
             {agregandoProducto ? '✖ Cerrar buscador' : '➕ Agregar Producto'}
           </button>
         </div>
 
-        {/* Buscador para Agregar Producto en Vivo */}
         {agregandoProducto && (
-          <div style={{ backgroundColor: '#18181b', padding: '15px', borderRadius: '10px', border: '1px solid #3f3f46', marginBottom: '20px' }}>
-            <input type="text" placeholder="🔍 Buscar producto en el inventario..." value={busqProdNuevo} onChange={(e) => setBusqProdNuevo(e.target.value)} style={{ width: '100%', padding: '10px', backgroundColor: '#09090b', border: '1px solid #27272a', color: '#fff', borderRadius: '6px', outline: 'none', marginBottom: '10px' }} />
-            <div style={{ maxHeight: '150px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '5px' }}>
+          <div style={{ backgroundColor: '#18181b', padding: '15px', borderRadius: '10px', marginBottom: '20px' }}>
+            <input type="text" placeholder="🔍 Buscar producto en inventario..." value={busqProdNuevo} onChange={e => setBusqProdNuevo(e.target.value)} style={{ width: '100%', padding: '10px', background: '#09090b', border: '1px solid #27272a', color: '#fff', borderRadius: '6px', marginBottom: '10px', boxSizing: 'border-box' }} />
+            <div style={{ maxHeight: '180px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '5px' }}>
               {productosFiltradosAgregado.map(p => (
-                <div key={p.id_producto} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#09090b', padding: '8px 12px', borderRadius: '6px' }}>
-                  <span style={{ fontSize: '0.9rem', color: '#f4f4f5' }}>{p.nombre} (${p.precio})</span>
-                  <button onClick={() => agregarProductoAlPedido(p)} style={{ backgroundColor: '#10b981', color: '#fff', border: 'none', padding: '4px 10px', borderRadius: '4px', fontSize: '0.8rem', fontWeight: 'bold', cursor: 'pointer' }}>
-                    + Añadir
-                  </button>
+                <div key={p.id_producto} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#09090b', padding: '10px', borderRadius: '6px' }}>
+                  <span>{p.nombre} <span style={{ color: '#10b981' }}>${p.precio}</span></span>
+                  <button className="btn-chico" style={{ backgroundColor: '#10b981', color: '#fff' }} onClick={() => agregarProductoAlPedido(p)}>+ Añadir</button>
                 </div>
               ))}
             </div>
           </div>
         )}
 
-        {/* Tabla / Contenedor de Productos */}
-        <div style={{ backgroundColor: '#121214', borderRadius: '12px', border: '1px solid #27272a', overflow: 'hidden', marginBottom: '25px', boxShadow: '0 4px 6px rgba(0,0,0,0.4)' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <div className="tabla-contenedor">
+          <table>
             <thead>
-              <tr style={{ borderBottom: '1px solid #27272a', backgroundColor: '#18181b', color: '#a1a1aa', fontSize: '0.85rem', textTransform: 'uppercase' }}>
-                <th style={{ textAlign: 'center', padding: '12px', width: '60px' }}>Listo</th>
-                <th style={{ textAlign: 'left', padding: '12px' }}>Producto</th>
-                <th style={{ textAlign: 'center', padding: '12px', width: '140px' }}>Cantidad</th>
-                <th style={{ textAlign: 'center', padding: '12px', width: '70px' }}>Acción</th>
+              <tr>
+                <th style={{ textAlign: 'center', width: '50px' }}>Ok</th>
+                <th>Producto</th>
+                <th style={{ textAlign: 'center' }}>Cant.</th>
+                <th style={{ textAlign: 'center' }}>🗑️</th>
               </tr>
             </thead>
             <tbody>
               {detalles.map((item, index) => {
-                const estaMarcado = productosMarcados[item.id_producto];
+                const marcado = productosMarcados[item.id_producto];
                 return (
-                  <tr 
-                    key={item.id_detalle || index} 
-                    style={{ 
-                      borderBottom: index < detalles.length - 1 ? '1px solid #27272a' : 'none', 
-                      backgroundColor: estaMarcado ? '#09090b' : '#121214', 
-                      opacity: estaMarcado ? 0.5 : 1, 
-                      transition: 'all 0.2s ease-in-out' 
-                    }}
-                  >
-                    <td style={{ textAlign: 'center', padding: '14px' }}>
-                      <input 
-                        type="checkbox" 
-                        checked={estaMarcado || false}
-                        onChange={() => toggleMarca(item.id_producto)}
-                        style={{ width: '20px', height: '20px', cursor: 'pointer', accentColor: '#2563eb' }}
-                      />
+                  <tr key={index} style={{ backgroundColor: marcado ? '#09090b' : 'transparent', opacity: marcado ? 0.6 : 1 }}>
+                    <td style={{ textAlign: 'center' }}>
+                      <input type="checkbox" checked={marcado || false} onChange={() => toggleMarca(item.id_producto)} style={{ width: '22px', height: '22px', accentColor: '#2563eb' }} />
                     </td>
-                    <td style={{ padding: '14px', textDecoration: estaMarcado ? 'line-through' : 'none', color: estaMarcado ? '#71717a' : '#f4f4f5', fontWeight: '500' }}>
-                      {item.productos?.nombre || 'Producto desconocido'}
-                      <div style={{ fontSize: '0.75rem', color: '#10b981' }}>Subtotal: ${item.precio_congelado * item.cantidad}</div>
+                    <td style={{ textDecoration: marcado ? 'line-through' : 'none' }}>
+                      {item.productos?.nombre}
+                      <div style={{ fontSize: '0.8rem', color: '#10b981' }}>${item.precio_congelado * item.cantidad}</div>
                     </td>
-                    <td style={{ textAlign: 'center', padding: '14px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-                        <button onClick={() => cambiarCantidadItem(item.id_detalle, item.id_producto, -1, item.cantidad)} style={{ backgroundColor: '#27272a', color: '#fff', border: 'none', width: '26px', height: '26px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>-</button>
-                        <span style={{ fontSize: '1rem', fontWeight: 'bold', minWidth: '20px' }}>{item.cantidad}</span>
-                        <button onClick={() => cambiarCantidadItem(item.id_detalle, item.id_producto, 1, item.cantidad)} style={{ backgroundColor: '#27272a', color: '#fff', border: 'none', width: '26px', height: '26px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>+</button>
+                    <td>
+                      <div className="controles-cantidad">
+                        <button className="btn-cant" onClick={() => cambiarCantidadItem(item.id_detalle, item.id_producto, -1, item.cantidad)}>-</button>
+                        <span>{item.cantidad}</span>
+                        <button className="btn-cant" onClick={() => cambiarCantidadItem(item.id_detalle, item.id_producto, 1, item.cantidad)}>+</button>
                       </div>
                     </td>
-                    <td style={{ textAlign: 'center', padding: '14px' }}>
-                      <button onClick={() => eliminarItem(item.id_detalle)} title="Eliminar ítem" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: '1.1rem' }}>
-                        🗑️
-                      </button>
+                    <td style={{ textAlign: 'center' }}>
+                      <button onClick={() => eliminarItem(item.id_detalle)} style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '1.2rem', cursor: 'pointer' }}>✖</button>
                     </td>
                   </tr>
                 );
@@ -453,25 +314,13 @@ export default function ArmarPedido() {
           </table>
         </div>
 
-        {/* Botón de Confirmación */}
         <button 
+          className="btn-grande"
           onClick={confirmarArmadoYDescontar}
           disabled={procesando}
-          style={{ 
-            width: '100%', 
-            padding: '16px', 
-            backgroundColor: procesando ? '#3f3f46' : '#16a34a', 
-            color: '#fff', 
-            border: 'none', 
-            borderRadius: '10px', 
-            fontSize: '1.05rem', 
-            fontWeight: 'bold', 
-            cursor: procesando ? 'not-allowed' : 'pointer',
-            boxShadow: '0 4px 12px rgba(22, 163, 74, 0.3)',
-            transition: 'background-color 0.2s'
-          }}
+          style={{ backgroundColor: procesando ? '#3f3f46' : '#16a34a' }}
         >
-          {procesando ? 'Descontando stock...' : '📦 Confirmar Armado y Descontar Stock'}
+          {procesando ? 'Procesando...' : '📦 Confirmar Armado y Descontar'}
         </button>
 
       </div>

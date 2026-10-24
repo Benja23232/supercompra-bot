@@ -29,9 +29,9 @@ export default function Pedidos() {
   const [cliNombre, setCliNombre] = useState('');
   const [cliTelefono, setCliTelefono] = useState('');
   const [cliDireccion, setCliDireccion] = useState('');
-  const [turnoElegido, setTurnoElegido] = useState('Mañana'); // 'Mañana', 'Tarde', 'Full'
-  const [pagoElegido, setPagoElegido] = useState('Efectivo'); // 'Efectivo', 'Transferencia'
-  const [carrito, setCarrito] = useState<any[]>([]); // { id_producto, nombre, precio, cantidad }
+  const [turnoElegido, setTurnoElegido] = useState('Mañana');
+  const [pagoElegido, setPagoElegido] = useState('Efectivo');
+  const [carrito, setCarrito] = useState<any[]>([]);
   const [guardandoPedido, setGuardandoPedido] = useState(false);
   const [ticketGenerado, setTicketGenerado] = useState('');
 
@@ -148,20 +148,14 @@ export default function Pedidos() {
     setGuardandoPedido(true);
 
     try {
-      // 1. Manejar cliente
-      let telefonoLimpio = cliTelefono.trim();
-      if (!telefonoLimpio) {
-        telefonoLimpio = `manual_${Date.now()}`;
-      }
+      let telefonoLimpio = cliTelefono.trim() || `manual_${Date.now()}`;
 
       await supabase
         .from('clientes')
         .upsert({ whatsapp_id: telefonoLimpio, nombre: cliNombre.trim() }, { onConflict: 'whatsapp_id' });
 
-      // 2. Estado combinando estado inicial + turno
       const estadoInicial = `Pendiente - ${turnoElegido}`;
 
-      // 3. Insertar el pedido en 'pedidos'
       const { data: pedidoData, error: pedidoError } = await supabase
         .from('pedidos')
         .insert([{
@@ -176,7 +170,6 @@ export default function Pedidos() {
       if (pedidoError) throw pedidoError;
       const idNuevoPedido = pedidoData.id_pedido;
 
-      // 4. Registrar el pago en la tabla 'pagos'
       const { error: pagoError } = await supabase
         .from('pagos')
         .insert([{
@@ -187,11 +180,8 @@ export default function Pedidos() {
           fecha_pago: new Date().toISOString()
         }]);
 
-      if (pagoError) {
-        console.error("Error detallado al registrar el pago:", JSON.stringify(pagoError, null, 2));
-      }
+      if (pagoError) console.error("Error al registrar el pago:", JSON.stringify(pagoError));
 
-      // 5. Insertar en 'detalle_pedidos' y descontar stock de 'productos'
       for (const item of carrito) {
         const { error: detError } = await supabase
           .from('detalle_pedidos')
@@ -205,21 +195,14 @@ export default function Pedidos() {
         if (detError) console.error("Error al insertar detalle:", detError);
 
         const nuevoStock = Math.max(0, (item.stock_fisico || 0) - item.cantidad);
-        const { error: stockError } = await supabase
+        await supabase
           .from('productos')
           .update({ stock_fisico: nuevoStock })
           .eq('id_producto', item.id_producto);
-
-        if (stockError) console.error("Error al descontar stock:", stockError);
       }
 
-      await logAuditoria(
-        'Pedidos',
-        'Creación manual',
-        `Creó manualmente el pedido #${String(idNuevoPedido).slice(0, 8)} para ${cliNombre} por $${totalCarrito}`
-      );
+      await logAuditoria('Pedidos', 'Creación manual', `Creó manualmente el pedido #${String(idNuevoPedido).slice(0, 8)} para ${cliNombre} por $${totalCarrito}`);
 
-      // 6. Generar resumen copiable para WhatsApp
       let resumen = `🛒 *SUPERCOMPRAS - NUEVO PEDIDO* 🛒\n\n`;
       resumen += `👤 *Cliente:* ${cliNombre}\n`;
       resumen += `📍 *Dirección:* ${cliDireccion}\n`;
@@ -236,8 +219,8 @@ export default function Pedidos() {
       fetchProductosInventario();
 
     } catch (err: any) {
-      console.error("Error detallado al crear pedido:", JSON.stringify(err, null, 2));
-      alert(`Hubo un error al registrar el pedido: ${err?.message || JSON.stringify(err)}`);
+      console.error("Error detallado al crear pedido:", err);
+      alert(`Hubo un error al registrar el pedido.`);
     } finally {
       setGuardandoPedido(false);
     }
@@ -254,7 +237,6 @@ export default function Pedidos() {
     setTicketGenerado('');
   };
 
-  // Filtrado por turno según los botones superiores
   const pedidosPorTurno = pedidos.filter((pedido) => {
     if (filtro === 'todos') return true;
     if (filtro === 'full') return pedido.estado?.includes('Full');
@@ -264,83 +246,47 @@ export default function Pedidos() {
   });
 
   const pedidosPendientes = pedidosPorTurno.filter(p => !p.estado || p.estado.includes('Pendiente'));
-  const pedidosEnProceso = pedidosPorTurno.filter(p => 
-    p.estado?.includes('En Preparación') || 
-    p.estado?.includes('En Preparacion') || 
-    p.estado?.includes('En Proceso') ||
-    p.estado?.includes('Armado') 
-  );
+  const pedidosEnProceso = pedidosPorTurno.filter(p => p.estado?.includes('En Preparación') || p.estado?.includes('En Preparacion') || p.estado?.includes('En Proceso') || p.estado?.includes('Armado'));
   const pedidosEnReparto = pedidosPorTurno.filter(p => p.estado?.includes('En Reparto'));
   const pedidosFinalizados = pedidosPorTurno.filter(p => p.estado?.includes('Entregado') || p.estado?.includes('Cancelado'));
 
   const cambiarEstado = async (id: any, nuevoEstadoElegido: string, estadoAnterior: string) => {
     let estadoFinal = nuevoEstadoElegido;
-
     if (['Pendiente', 'En Preparación', 'Armado', 'En Reparto', 'Entregado', 'Cancelado'].includes(nuevoEstadoElegido)) {
       if (estadoAnterior.includes('Mañana')) estadoFinal = `${nuevoEstadoElegido} - Mañana`;
       else if (estadoAnterior.includes('Tarde')) estadoFinal = `${nuevoEstadoElegido} - Tarde`;
       else if (estadoAnterior.includes('Full')) estadoFinal = `${nuevoEstadoElegido} - Full`;
     }
-
     if (estadoFinal === estadoAnterior) return;
 
-    const { error } = await supabase
-      .from('pedidos')
-      .update({ estado: estadoFinal })
-      .eq('id_pedido', id);
-
-    if (error) {
-      alert('Error al actualizar el estado.');
-      console.error(error);
-    } else {
-      await logAuditoria(
-        'Pedidos',
-        'Cambio de estado',
-        `Actualizó el estado del pedido #${String(id).slice(0, 8)} de "${estadoAnterior}" a "${estadoFinal}"`
-      );
+    const { error } = await supabase.from('pedidos').update({ estado: estadoFinal }).eq('id_pedido', id);
+    if (!error) {
+      await logAuditoria('Pedidos', 'Cambio de estado', `Actualizó estado del pedido #${String(id).slice(0, 8)} a "${estadoFinal}"`);
       fetchPedidos(); 
     }
   };
 
   const cambiarEstadoMasivo = async () => {
     if (pedidosSeleccionados.length === 0) return;
-
-    const { error } = await supabase
-      .from('pedidos')
-      .update({ estado: estadoMasivo })
-      .in('id_pedido', pedidosSeleccionados);
-
-    if (error) {
-      alert('Error al actualizar los pedidos seleccionados.');
-      console.error(error);
-    } else {
-      await logAuditoria(
-        'Pedidos',
-        'Cambio de estado masivo',
-        `Actualizó ${pedidosSeleccionados.length} pedidos al estado "${estadoMasivo}"`
-      );
+    const { error } = await supabase.from('pedidos').update({ estado: estadoMasivo }).in('id_pedido', pedidosSeleccionados);
+    if (!error) {
       setPedidosSeleccionados([]);
       fetchPedidos();
     }
   };
 
   const toggleSeleccionPedido = (id: any) => {
-    if (pedidosSeleccionados.includes(id)) {
-      setPedidosSeleccionados(pedidosSeleccionados.filter(item => item !== id));
-    } else {
-      setPedidosSeleccionados([...pedidosSeleccionados, id]);
-    }
+    if (pedidosSeleccionados.includes(id)) setPedidosSeleccionados(pedidosSeleccionados.filter(item => item !== id));
+    else setPedidosSeleccionados([...pedidosSeleccionados, id]);
   };
 
   const seleccionarTodosVisibles = () => {
     const idsVisibles = [...pedidosPendientes, ...pedidosEnProceso, ...pedidosEnReparto, ...pedidosFinalizados].map(p => p.id_pedido);
-    if (pedidosSeleccionados.length === idsVisibles.length) {
-      setPedidosSeleccionados([]);
-    } else {
-      setPedidosSeleccionados(idsVisibles);
-    }
+    if (pedidosSeleccionados.length === idsVisibles.length) setPedidosSeleccionados([]);
+    else setPedidosSeleccionados(idsVisibles);
   };
 
+  // --- FUNCIONES RESTAURADAS ---
   const cerrarSesion = () => {
     localStorage.clear();
     router.push('/');
@@ -387,48 +333,35 @@ export default function Pedidos() {
 
   const formatearFecha = (fechaIso: string) => {
     if (!fechaIso) return '-';
-    const fechaStr = fechaIso.endsWith('Z') || fechaIso.includes('+') ? fechaIso : fechaIso + 'Z';
-    const fecha = new Date(fechaStr);
-    return fecha.toLocaleString('es-AR', {
-      day: '2-digit', month: '2-digit', year: 'numeric',
-      hour: '2-digit', minute: '2-digit', hour12: false,
-      timeZone: 'America/Argentina/Buenos_Aires'
-    });
+    const fecha = new Date(fechaIso.endsWith('Z') || fechaIso.includes('+') ? fechaIso : fechaIso + 'Z');
+    return fecha.toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'America/Argentina/Buenos_Aires' });
   };
 
-  if (!autorizado) {
-    return (
-      <main style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', backgroundColor: '#0a0a0a', color: '#9ca3af' }}>
-        <p style={{ fontSize: '1.2rem', fontWeight: 'bold' }}>Verificando acceso...</p>
-      </main>
-    );
-  }
+  if (!autorizado) return <main style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', backgroundColor: '#0a0a0a', color: '#9ca3af' }}><p>Verificando acceso...</p></main>;
 
   const renderSeccionPedidos = (lista: any[], tituloSecc: string, descripcion: string) => {
     if (lista.length === 0) {
       return (
-        <div style={{ marginBottom: '30px', padding: '30px', backgroundColor: '#121214', borderRadius: '12px', border: '1px solid #27272a', textAlign: 'center' }}>
-          <span style={{ fontSize: '2.5rem', display: 'block', marginBottom: '10px' }}>
-            {tituloSecc.includes('Espera') ? '⏳' : tituloSecc.includes('Armado') ? '⚙️' : tituloSecc.includes('Reparto') ? '🛵' : '✅'}
-          </span>
-          <h2 style={{ fontSize: '1.3rem', margin: '0 0 5px 0', color: '#f4f4f5' }}>{tituloSecc} (0)</h2>
-          <p style={{ color: '#a1a1aa', margin: 0, fontSize: '0.9rem' }}>No hay pedidos en esta etapa para el turno seleccionado.</p>
+        <div className="tarjeta-vacia">
+          <span className="icono-vacio">{tituloSecc.includes('Espera') ? '⏳' : tituloSecc.includes('Armado') ? '⚙️' : tituloSecc.includes('Reparto') ? '🛵' : '✅'}</span>
+          <h2>{tituloSecc} (0)</h2>
+          <p>{descripcion}</p>
         </div>
       );
     }
 
     return (
-      <div style={{ marginBottom: '40px', width: '100%' }}>
-        <h2 style={{ fontSize: '1.3rem', margin: '0 0 5px 0', color: '#f4f4f5' }}>{tituloSecc} ({lista.length})</h2>
-        <p style={{ color: '#a1a1aa', marginBottom: '15px', marginTop: 0, fontSize: '0.9rem' }}>{descripcion}</p>
+      <div className="seccion-pedidos">
+        <h2>{tituloSecc} ({lista.length})</h2>
+        <p className="descripcion-seccion">{descripcion}</p>
         
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '20px', width: '100%' }}>
+        <div className="grilla-pedidos">
           {lista.map((pedido) => {
             const estadoActual = pedido.estado || 'Pendiente';
             const estaSeleccionado = pedidosSeleccionados.includes(pedido.id_pedido);
 
             let valorSelect = estadoActual;
-            if (estadoActual.includes('En Preparación') || estadoActual.includes('En Preparacion') || estadoActual.includes('En Proceso')) valorSelect = 'En Preparación';
+            if (estadoActual.includes('En Preparación') || estadoActual.includes('En Proceso')) valorSelect = 'En Preparación';
             else if (estadoActual.includes('Armado')) valorSelect = 'Armado';
             else if (estadoActual.includes('En Reparto')) valorSelect = 'En Reparto';
             else if (estadoActual.includes('Entregado')) valorSelect = 'Entregado';
@@ -436,34 +369,34 @@ export default function Pedidos() {
             else if (estadoActual.includes('Pendiente')) valorSelect = 'Pendiente';
 
             return (
-              <div key={pedido.id_pedido} style={{ backgroundColor: '#121214', border: estaSeleccionado ? '2px solid #6366f1' : '1px solid #27272a', borderRadius: '12px', padding: '20px', boxShadow: '0 4px 6px rgba(0,0,0,0.4)', display: 'flex', flexDirection: 'column', gap: '14px', position: 'relative' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #27272a', paddingBottom: '10px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <input type="checkbox" checked={estaSeleccionado} onChange={() => toggleSeleccionPedido(pedido.id_pedido)} style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#4f46e5' }} />
-                    <span style={{ fontWeight: 'bold', fontSize: '1.1rem', color: '#f4f4f5' }}>#{String(pedido.id_pedido).slice(0, 8)}...</span>
+              <div key={pedido.id_pedido} className={`tarjeta-pedido ${estaSeleccionado ? 'seleccionado' : ''}`}>
+                <div className="header-pedido">
+                  <div className="id-pedido">
+                    <input type="checkbox" checked={estaSeleccionado} onChange={() => toggleSeleccionPedido(pedido.id_pedido)} />
+                    <span>#{String(pedido.id_pedido).slice(0, 8)}...</span>
                   </div>
-                  <span style={{ fontWeight: 'bold', fontSize: '1.2rem', color: '#10b981' }}>${pedido.total_compra || 0}</span>
+                  <span className="total-pedido">${pedido.total_compra || 0}</span>
                 </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                  <div style={{ fontSize: '1.05rem', color: '#f4f4f5' }}>👤 <strong>{pedido.nombre_cliente || pedido.whatsapp_id || 'Cliente'}</strong></div>
-                  <div style={{ fontSize: '0.85rem', color: '#a1a1aa', display: 'flex', alignItems: 'center', gap: '5px' }}>📅 {formatearFecha(pedido.fecha_creacion)}</div>
+                <div className="info-cliente">
+                  <div>👤 <strong>{pedido.nombre_cliente || pedido.whatsapp_id || 'Cliente'}</strong></div>
+                  <div className="fecha-pedido">📅 {formatearFecha(pedido.fecha_creacion)}</div>
                 </div>
 
-                <div style={{ backgroundColor: '#09090b', padding: '10px 12px', borderRadius: '8px', border: '1px solid #27272a', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
-                  <div style={{ fontSize: '0.9rem', color: '#e4e4e7', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    📍 <strong>Dirección:</strong> {pedido.direccion ? pedido.direccion : <span style={{ color: '#f87171' }}>No especificada</span>}
+                <div className="direccion-box">
+                  <div className="texto-direccion">
+                    📍 <strong>Dirección:</strong> {pedido.direccion ? pedido.direccion : <span className="error">No especificada</span>}
                   </div>
                   {pedido.direccion && (
-                    <button onClick={() => abrirDireccionIndividual(pedido.direccion)} title="Abrir ubicación" style={{ background: '#16a34a', color: '#fff', border: 'none', borderRadius: '6px', padding: '6px 10px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold', whiteSpace: 'nowrap' }}>
+                    <button onClick={() => abrirDireccionIndividual(pedido.direccion)} className="btn-mapa">
                       🗺️ Mapa
                     </button>
                   )}
                 </div>
 
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.85rem', color: '#a1a1aa', marginBottom: '6px' }}>Estado y Logística:</label>
-                  <select value={valorSelect} onChange={(e) => cambiarEstado(pedido.id_pedido, e.target.value, estadoActual)} style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #27272a', cursor: 'pointer', backgroundColor: '#09090b', color: '#f4f4f5', fontSize: '0.9rem', fontWeight: '500', outline: 'none' }}>
+                <div className="selector-estado">
+                  <label>Estado y Logística:</label>
+                  <select value={valorSelect} onChange={(e) => cambiarEstado(pedido.id_pedido, e.target.value, estadoActual)}>
                     <option value="Pendiente">Pendiente</option>
                     <option value="Pendiente - Mañana">Pendiente - Mañana</option>
                     <option value="Pendiente - Tarde">Pendiente - Tarde</option>
@@ -476,13 +409,9 @@ export default function Pedidos() {
                   </select>
                 </div>
 
-                <div style={{ display: 'flex', gap: '10px', marginTop: '4px' }}>
-                  <Link href={`/pedidos/${pedido.id_pedido}`} style={{ flex: 1, textAlign: 'center', padding: '10px 8px', backgroundColor: '#27272a', color: '#f4f4f5', borderRadius: '8px', textDecoration: 'none', fontWeight: 'bold', fontSize: '0.85rem' }}>
-                    👁️ Ver Detalle
-                  </Link>
-                  <Link href={`/pedidos/${pedido.id_pedido}/armar`} style={{ flex: 1, textAlign: 'center', padding: '10px 8px', backgroundColor: '#2563eb', color: '#fff', borderRadius: '8px', textDecoration: 'none', fontWeight: 'bold', fontSize: '0.85rem' }}>
-                    📦 Armar Pedido
-                  </Link>
+                <div className="botones-accion">
+                  <Link href={`/pedidos/${pedido.id_pedido}`} className="btn-detalle">👁️ Ver Detalle</Link>
+                  <Link href={`/pedidos/${pedido.id_pedido}/armar`} className="btn-armar">📦 Armar</Link>
                 </div>
               </div>
             );
@@ -497,66 +426,121 @@ export default function Pedidos() {
   );
 
   return (
-    <main style={{ padding: '20px', backgroundColor: '#0a0a0a', minHeight: '100vh', color: '#f4f4f5', fontFamily: 'sans-serif', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', alignItems: 'center', paddingBottom: pedidosSeleccionados.length > 0 ? '100px' : '20px' }}>
-      <div style={{ width: '100%', maxWidth: '1400px' }}>
+    <main className="layout-principal">
+      <style>{`
+        /* --- ESTILOS RESPONSIVOS GLOBALES --- */
+        .layout-principal { padding: 20px; background-color: #0a0a0a; min-height: 100vh; color: #f4f4f5; font-family: sans-serif; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; padding-bottom: ${pedidosSeleccionados.length > 0 ? '100px' : '20px'}; }
+        .contenedor-max { width: 100%; max-width: 1400px; }
+        
+        .header-top { display: flex; justify-content: space-between; width: 100%; margin-bottom: 20px; }
+        .titulo-seccion { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; margin-bottom: 25px; width: 100%; }
+        .titulo-texto { margin: 0; font-size: 1.8rem; color: #f4f4f5; }
+        
+        .grupo-botones { display: flex; gap: 10px; flex-wrap: wrap; }
+        .btn { border: none; padding: 10px 18px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 0.9rem; display: flex; align-items: center; gap: 5px; justify-content: center; }
+        .btn-verde { background-color: #10b981; color: #fff; }
+        .btn-oscuro { background-color: #27272a; color: #f4f4f5; border: 1px solid #3f3f46; }
+        
+        .filtros-box { background-color: #121214; padding: 20px; border-radius: 12px; margin-bottom: 35px; border: 1px solid #27272a; width: 100%; box-sizing: border-box; }
+        .botones-filtro { display: flex; gap: 10px; flex-wrap: wrap; }
+        .btn-filtro { flex: 1; min-width: 120px; padding: 10px; border-radius: 8px; border: 1px solid #27272a; font-weight: bold; font-size: 0.9rem; color: white; cursor: pointer; text-align: center; }
+        
+        .tarjeta-vacia { margin-bottom: 30px; padding: 30px; background-color: #121214; border-radius: 12px; border: 1px solid #27272a; text-align: center; }
+        .icono-vacio { font-size: 2.5rem; display: block; margin-bottom: 10px; }
+        .tarjeta-vacia h2 { font-size: 1.3rem; margin: 0 0 5px 0; color: #f4f4f5; }
+        .tarjeta-vacia p { color: #a1a1aa; margin: 0; font-size: 0.9rem; }
+        
+        .seccion-pedidos { margin-bottom: 40px; width: 100%; }
+        .seccion-pedidos h2 { font-size: 1.3rem; margin: 0 0 5px 0; color: #f4f4f5; }
+        .descripcion-seccion { color: #a1a1aa; margin-bottom: 15px; margin-top: 0; font-size: 0.9rem; }
+        .grilla-pedidos { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 20px; width: 100%; }
+        
+        .tarjeta-pedido { background-color: #121214; border: 1px solid #27272a; border-radius: 12px; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.4); display: flex; flex-direction: column; gap: 14px; position: relative; }
+        .tarjeta-pedido.seleccionado { border: 2px solid #6366f1; }
+        
+        .header-pedido { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #27272a; padding-bottom: 10px; }
+        .id-pedido { display: flex; align-items: center; gap: 8px; font-weight: bold; font-size: 1.1rem; color: #f4f4f5; }
+        .id-pedido input { width: 18px; height: 18px; cursor: pointer; accent-color: #4f46e5; }
+        .total-pedido { font-weight: bold; font-size: 1.2rem; color: #10b981; }
+        
+        .info-cliente { display: flex; flex-direction: column; gap: 5px; font-size: 1.05rem; color: #f4f4f5; }
+        .fecha-pedido { font-size: 0.85rem; color: #a1a1aa; display: flex; align-items: center; gap: 5px; }
+        
+        .direccion-box { background-color: #09090b; padding: 10px 12px; border-radius: 8px; border: 1px solid #27272a; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+        .texto-direccion { font-size: 0.9rem; color: #e4e4e7; overflow: hidden; text-overflow: ellipsis; }
+        .error { color: #f87171; }
+        .btn-mapa { background: #16a34a; color: #fff; border: none; border-radius: 6px; padding: 6px 10px; cursor: pointer; font-size: 0.8rem; font-weight: bold; white-space: nowrap; }
+        
+        .selector-estado label { display: block; font-size: 0.85rem; color: #a1a1aa; margin-bottom: 6px; }
+        .selector-estado select { width: 100%; padding: 0.6rem 0.75rem; border-radius: 8px; border: 1px solid #27272a; cursor: pointer; background-color: #09090b; color: #f4f4f5; font-size: 0.9rem; font-weight: 500; outline: none; }
+        
+        .botones-accion { display: flex; gap: 10px; margin-top: 4px; }
+        .btn-detalle, .btn-armar { flex: 1; text-align: center; padding: 10px 8px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 0.85rem; }
+        .btn-detalle { background-color: #27272a; color: #f4f4f5; }
+        .btn-armar { background-color: #2563eb; color: #fff; }
 
+        /* MODAL */
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.8); display: flex; justify-content: center; align-items: center; z-index: 2000; padding: 20px; box-sizing: border-box; }
+        .modal-content { background-color: #121214; border: 1px solid #27272a; border-radius: 16px; width: 100%; max-width: 900px; max-height: 90vh; overflow-y: auto; padding: 30px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.7); }
+        .modal-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; }
+        .modal-grid-peq { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; }
+        .input-dark { width: 100%; padding: 10px; border-radius: 8px; background-color: #09090b; border: 1px solid #27272a; color: #fff; outline: none; box-sizing: border-box; }
+        .label-dark { display: block; font-size: 0.85rem; color: #a1a1aa; margin-bottom: 5px; }
+        .barra-flotante { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background-color: #18181b; border: 1px solid #3f3f46; padding: 15px 25px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.6); display: flex; align-items: center; gap: 20px; z-index: 1100; flex-wrap: wrap; width: 90%; max-width: 800px; justify-content: center; }
+
+        /* RESPONSIVE PARA CELULARES */
+        @media (max-width: 600px) {
+          .titulo-seccion { flex-direction: column; align-items: stretch; text-align: center; }
+          .grupo-botones { flex-direction: column; width: 100%; }
+          .btn { width: 100%; }
+          .botones-filtro { flex-direction: column; }
+          .btn-filtro { width: 100%; }
+          .modal-content { padding: 15px; }
+          .botones-accion { flex-direction: column; }
+          .barra-flotante { flex-direction: column; gap: 10px; padding: 15px; }
+          .barra-flotante select, .barra-flotante button { width: 100%; }
+          .direccion-box { flex-direction: column; align-items: flex-start; }
+          .btn-mapa { width: 100%; margin-top: 5px; text-align: center; }
+        }
+      `}</style>
+
+      <div className="contenedor-max">
         {alertaNuevoPedido && (
-          <div style={{ position: 'fixed', top: '20px', right: '20px', backgroundColor: '#10b981', color: '#fff', padding: '15px 25px', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.5)', zIndex: 1000, fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <span>🔔 ¡Nuevo pedido ingresado en el sistema!</span>
+          <div style={{ position: 'fixed', top: '20px', right: '20px', backgroundColor: '#10b981', color: '#fff', padding: '15px 25px', borderRadius: '8px', zIndex: 1000, fontWeight: 'bold' }}>
+            🔔 ¡Nuevo pedido ingresado!
           </div>
         )}
 
-        <div style={{ marginBottom: '20px', display: 'flex', justifyContent: 'space-between', width: '100%' }}>
+        <div className="header-top">
           {rolActivo === 'admin' ? (
-            <Link href="/dashboard" style={{ color: '#818cf8', textDecoration: 'none', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '5px' }}>
-              🔙 Volver al panel principal
-            </Link>
+            <Link href="/dashboard" style={{ color: '#818cf8', textDecoration: 'none', fontWeight: 'bold' }}>🔙 Volver al panel</Link>
           ) : (
-            <button onClick={cerrarSesion} style={{ background: 'none', border: 'none', color: '#ef4444', fontWeight: 'bold', fontSize: '0.95rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}>
-              🔒 Cerrar Sesión
-            </button>
+            <button onClick={cerrarSesion} style={{ background: 'none', border: 'none', color: '#ef4444', fontWeight: 'bold', cursor: 'pointer' }}>🔒 Cerrar Sesión</button>
           )}
         </div>
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px', marginBottom: '25px', width: '100%' }}>
-          <h1 style={{ margin: 0, fontSize: '1.8rem', color: '#f4f4f5' }}>🛒 Logística y Armado de Pedidos</h1>
-          
-          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-            <button onClick={() => setModalAbierto(true)} style={{ backgroundColor: '#10b981', color: '#fff', border: 'none', padding: '10px 18px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.9rem' }}>
-              ➕ Cargar Pedido Manual
-            </button>
-            <button onClick={seleccionarTodosVisibles} style={{ backgroundColor: '#27272a', color: '#f4f4f5', border: '1px solid #3f3f46', padding: '10px 18px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.9rem' }}>
-              ☑️ Seleccionar Todos
-            </button>
-            <button onClick={abrirRutaEnMapa} style={{ backgroundColor: '#16a34a', color: '#fff', border: 'none', padding: '10px 18px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', gap: '5px', alignItems: 'center', fontSize: '0.9rem' }}>
-              🗺️ Ruta (Turno Actual)
-            </button>
-            <button onClick={fetchPedidos} style={{ backgroundColor: '#27272a', color: '#f4f4f5', border: '1px solid #3f3f46', padding: '10px 18px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', gap: '5px', alignItems: 'center', fontSize: '0.9rem' }}>
-              🔄 Sincronizar
-            </button>
+        <div className="titulo-seccion">
+          <h1 className="titulo-texto">🛒 Logística y Armado</h1>
+          <div className="grupo-botones">
+            <button className="btn btn-verde" onClick={() => setModalAbierto(true)}>➕ Pedido Manual</button>
+            <button className="btn btn-oscuro" onClick={seleccionarTodosVisibles}>☑️ Seleccionar Todos</button>
+            <button className="btn btn-oscuro" onClick={abrirRutaEnMapa}>🗺️ Ruta (Turno Actual)</button>
+            <button className="btn btn-oscuro" onClick={fetchPedidos}>🔄 Sincronizar</button>
           </div>
         </div>
 
-        <div style={{ backgroundColor: '#121214', padding: '20px', borderRadius: '12px', marginBottom: '35px', border: '1px solid #27272a', width: '100%', boxSizing: 'border-box' }}>
-          <h2 style={{ fontSize: '1.05rem', margin: '0 0 15px 0', color: '#f4f4f5' }}>📍 Filtrar por Turno / Envío</h2>
-          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-            <button onClick={() => setFiltro('todos')} style={{ flex: 1, minWidth: '130px', padding: '10px 15px', borderRadius: '8px', border: '1px solid #27272a', fontWeight: 'bold', fontSize: '0.9rem', backgroundColor: filtro === 'todos' ? '#4f46e5' : '#18181b', color: 'white', cursor: 'pointer' }}>
-              📋 Todos ({pedidos.length})
-            </button>
-            <button onClick={() => setFiltro('full')} style={{ flex: 1, minWidth: '130px', padding: '10px 15px', borderRadius: '8px', border: '1px solid #27272a', fontWeight: 'bold', fontSize: '0.9rem', backgroundColor: filtro === 'full' ? '#4f46e5' : '#18181b', color: 'white', cursor: 'pointer' }}>
-              🚀 Envío Full ({pedidos.filter(p => p.estado?.includes('Full')).length})
-            </button>
-            <button onClick={() => setFiltro('manana')} style={{ flex: 1, minWidth: '130px', padding: '10px 15px', borderRadius: '8px', border: '1px solid #27272a', fontWeight: 'bold', fontSize: '0.9rem', backgroundColor: filtro === 'manana' ? '#4f46e5' : '#18181b', color: 'white', cursor: 'pointer' }}>
-              ☀️ Mañana ({pedidos.filter(p => p.estado?.includes('Mañana')).length})
-            </button>
-            <button onClick={() => setFiltro('tarde')} style={{ flex: 1, minWidth: '130px', padding: '10px 15px', borderRadius: '8px', border: '1px solid #27272a', fontWeight: 'bold', fontSize: '0.9rem', backgroundColor: filtro === 'tarde' ? '#4f46e5' : '#18181b', color: 'white', cursor: 'pointer' }}>
-              🌙 Tarde ({pedidos.filter(p => p.estado?.includes('Tarde')).length})
-            </button>
+        <div className="filtros-box">
+          <h2 style={{ fontSize: '1.05rem', margin: '0 0 15px 0' }}>📍 Filtrar por Turno / Envío</h2>
+          <div className="botones-filtro">
+            <button className="btn-filtro" style={{ backgroundColor: filtro === 'todos' ? '#4f46e5' : '#18181b' }} onClick={() => setFiltro('todos')}>📋 Todos ({pedidos.length})</button>
+            <button className="btn-filtro" style={{ backgroundColor: filtro === 'full' ? '#4f46e5' : '#18181b' }} onClick={() => setFiltro('full')}>🚀 Full ({pedidos.filter(p => p.estado?.includes('Full')).length})</button>
+            <button className="btn-filtro" style={{ backgroundColor: filtro === 'manana' ? '#4f46e5' : '#18181b' }} onClick={() => setFiltro('manana')}>☀️ Mañana ({pedidos.filter(p => p.estado?.includes('Mañana')).length})</button>
+            <button className="btn-filtro" style={{ backgroundColor: filtro === 'tarde' ? '#4f46e5' : '#18181b' }} onClick={() => setFiltro('tarde')}>🌙 Tarde ({pedidos.filter(p => p.estado?.includes('Tarde')).length})</button>
           </div>
         </div>
         
         {loading ? (
-          <div style={{ textAlign: 'center', padding: '40px', color: '#a1a1aa', fontSize: '1.1rem' }}>Cargando ventas del depósito...</div>
+          <div style={{ textAlign: 'center', padding: '40px', color: '#a1a1aa' }}>Cargando ventas...</div>
         ) : (
           <div style={{ width: '100%' }}>
             {renderSeccionPedidos(pedidosPendientes, '⏳ Cola de Espera (Pendientes)', 'Pedidos ingresados esperando que un empleado los busque en las estanterías.')}
@@ -565,105 +549,73 @@ export default function Pedidos() {
             {renderSeccionPedidos(pedidosFinalizados, '📦 Historial Terminado', 'Pedidos ya entregados al cliente o cancelados.')}
           </div>
         )}
-
       </div>
 
-      {/* --- MODAL DE NUEVO PEDIDO MANUAL --- */}
       {modalAbierto && (
-        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.8)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 2000, padding: '20px', boxSizing: 'border-box' }}>
-          <div style={{ backgroundColor: '#121214', border: '1px solid #27272a', borderRadius: '16px', width: '100%', maxWidth: '900px', maxHeight: '90vh', overflowY: 'auto', padding: '30px', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.7)' }}>
-            
+        <div className="modal-overlay">
+          <div className="modal-content">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid #27272a', paddingBottom: '15px' }}>
-              <h2 style={{ margin: 0, color: '#f4f4f5', fontSize: '1.4rem' }}>📝 Cargar Nuevo Pedido Manual</h2>
-              <button onClick={reiniciarModal} style={{ background: 'none', border: 'none', color: '#a1a1aa', fontSize: '1.2rem', cursor: 'pointer', fontWeight: 'bold' }}>✕</button>
+              <h2 style={{ margin: 0, fontSize: '1.4rem' }}>📝 Cargar Nuevo Pedido Manual</h2>
+              <button onClick={reiniciarModal} style={{ background: 'none', border: 'none', color: '#a1a1aa', fontSize: '1.2rem', cursor: 'pointer' }}>✕</button>
             </div>
 
             {ticketGenerado ? (
               <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                <div style={{ backgroundColor: '#09090b', padding: '20px', borderRadius: '8px', border: '1px solid #27272a', textAlign: 'left', whiteSpace: 'pre-wrap', fontFamily: 'monospace', fontSize: '0.95rem', color: '#10b981' }}>
-                  {ticketGenerado}
-                </div>
-                <div style={{ display: 'flex', gap: '15px', justifyContent: 'center' }}>
-                  <button onClick={() => { navigator.clipboard.writeText(ticketGenerado); alert("¡Copiado al portapapeles!"); }} style={{ backgroundColor: '#2563eb', color: '#fff', border: 'none', padding: '12px 24px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>
-                    📋 Copiar Resumen para WhatsApp
-                  </button>
-                  <button onClick={reiniciarModal} style={{ backgroundColor: '#27272a', color: '#fff', border: '1px solid #3f3f46', padding: '12px 24px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>
-                    Cerrar y Volver
-                  </button>
+                <div style={{ backgroundColor: '#09090b', padding: '20px', borderRadius: '8px', border: '1px solid #27272a', textAlign: 'left', whiteSpace: 'pre-wrap', fontFamily: 'monospace', color: '#10b981' }}>{ticketGenerado}</div>
+                <div className="grupo-botones" style={{ justifyContent: 'center' }}>
+                  <button onClick={() => { navigator.clipboard.writeText(ticketGenerado); alert("¡Copiado!"); }} className="btn btn-verde">📋 Copiar Resumen</button>
+                  <button onClick={reiniciarModal} className="btn btn-oscuro">Cerrar y Volver</button>
                 </div>
               </div>
             ) : (
               <form onSubmit={guardarPedidoManual} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                
-                {/* Datos del Cliente */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '15px' }}>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.85rem', color: '#a1a1aa', marginBottom: '5px' }}>Nombre del Cliente *</label>
-                    <input type="text" required value={cliNombre} onChange={(e) => setCliNombre(e.target.value)} placeholder="Ej: Juan Pérez" style={{ width: '100%', padding: '10px', borderRadius: '8px', backgroundColor: '#09090b', border: '1px solid #27272a', color: '#fff', outline: 'none' }} />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.85rem', color: '#a1a1aa', marginBottom: '5px' }}>Teléfono / WhatsApp (Opcional)</label>
-                    <input type="text" value={cliTelefono} onChange={(e) => setCliTelefono(e.target.value)} placeholder="Ej: 2392692177" style={{ width: '100%', padding: '10px', borderRadius: '8px', backgroundColor: '#09090b', border: '1px solid #27272a', color: '#fff', outline: 'none' }} />
-                  </div>
-                  <div style={{ gridColumn: '1 / -1' }}>
-                    <label style={{ display: 'block', fontSize: '0.85rem', color: '#a1a1aa', marginBottom: '5px' }}>Dirección de Entrega *</label>
-                    <input type="text" required value={cliDireccion} onChange={(e) => setCliDireccion(e.target.value)} placeholder="Ej: Rivadavia 450" style={{ width: '100%', padding: '10px', borderRadius: '8px', backgroundColor: '#09090b', border: '1px solid #27272a', color: '#fff', outline: 'none' }} />
-                  </div>
+                <div className="modal-grid">
+                  <div><label className="label-dark">Nombre del Cliente *</label><input type="text" required value={cliNombre} onChange={(e) => setCliNombre(e.target.value)} className="input-dark" /></div>
+                  <div><label className="label-dark">Teléfono / WhatsApp</label><input type="text" value={cliTelefono} onChange={(e) => setCliTelefono(e.target.value)} className="input-dark" /></div>
+                  <div style={{ gridColumn: '1 / -1' }}><label className="label-dark">Dirección de Entrega *</label><input type="text" required value={cliDireccion} onChange={(e) => setCliDireccion(e.target.value)} className="input-dark" /></div>
                 </div>
 
-                {/* Turno y Método de Pago */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px' }}>
+                <div className="modal-grid-peq">
                   <div>
-                    <label style={{ display: 'block', fontSize: '0.85rem', color: '#a1a1aa', marginBottom: '5px' }}>Turno de Envío</label>
-                    <select value={turnoElegido} onChange={(e) => setTurnoElegido(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '8px', backgroundColor: '#09090b', border: '1px solid #27272a', color: '#fff', outline: 'none' }}>
-                      <option value="Mañana">☀️ Mañana</option>
-                      <option value="Tarde">🌙 Tarde</option>
-                      <option value="Full">🚀 Envío Full</option>
+                    <label className="label-dark">Turno de Envío</label>
+                    <select value={turnoElegido} onChange={(e) => setTurnoElegido(e.target.value)} className="input-dark">
+                      <option value="Mañana">☀️ Mañana</option><option value="Tarde">🌙 Tarde</option><option value="Full">🚀 Envío Full</option>
                     </select>
                   </div>
                   <div>
-                    <label style={{ display: 'block', fontSize: '0.85rem', color: '#a1a1aa', marginBottom: '5px' }}>Método de Pago</label>
-                    <select value={pagoElegido} onChange={(e) => setPagoElegido(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '8px', backgroundColor: '#09090b', border: '1px solid #27272a', color: '#fff', outline: 'none' }}>
-                      <option value="Efectivo">💵 Efectivo</option>
-                      <option value="Transferencia">📱 Transferencia</option>
+                    <label className="label-dark">Método de Pago</label>
+                    <select value={pagoElegido} onChange={(e) => setPagoElegido(e.target.value)} className="input-dark">
+                      <option value="Efectivo">💵 Efectivo</option><option value="Transferencia">📱 Transferencia</option>
                     </select>
                   </div>
                 </div>
 
-                {/* Buscador y Selección de Productos */}
                 <div style={{ borderTop: '1px solid #27272a', paddingTop: '15px' }}>
-                  <label style={{ display: 'block', fontSize: '0.95rem', fontWeight: 'bold', color: '#f4f4f5', marginBottom: '10px' }}>Seleccionar Productos</label>
-                  <input type="text" placeholder="🔍 Buscar producto en stock..." value={busqProducto} onChange={(e) => setBusqProducto(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '8px', backgroundColor: '#09090b', border: '1px solid #27272a', color: '#fff', marginBottom: '10px', outline: 'none' }} />
+                  <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '10px' }}>Seleccionar Productos</label>
+                  <input type="text" placeholder="🔍 Buscar producto..." value={busqProducto} onChange={(e) => setBusqProducto(e.target.value)} className="input-dark" style={{ marginBottom: '10px' }} />
                   
-                  {/* Lista desplegable de productos filtrados */}
-                  <div style={{ maxHeight: '180px', overflowY: 'auto', border: '1px solid #27272a', borderRadius: '8px', backgroundColor: '#09090b', marginBottom: '15px' }}>
+                  <div style={{ maxHeight: '150px', overflowY: 'auto', border: '1px solid #27272a', borderRadius: '8px', backgroundColor: '#09090b', marginBottom: '15px' }}>
                     {productosFiltradosModal.map(p => (
                       <div key={p.id_producto} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderBottom: '1px solid #18181b' }}>
                         <div>
-                          <span style={{ color: '#f4f4f5', fontSize: '0.9rem' }}>{p.nombre}</span>
+                          <span style={{ fontSize: '0.9rem' }}>{p.nombre}</span>
                           <span style={{ color: '#10b981', fontSize: '0.8rem', marginLeft: '10px' }}>${p.precio} (Stock: {p.stock_fisico})</span>
                         </div>
-                        <button type="button" onClick={() => agregarAlCarrito(p)} style={{ backgroundColor: '#2563eb', color: '#fff', border: 'none', padding: '4px 10px', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}>
-                          + Agregar
-                        </button>
+                        <button type="button" onClick={() => agregarAlCarrito(p)} style={{ backgroundColor: '#2563eb', color: '#fff', border: 'none', padding: '4px 10px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>+ Añadir</button>
                       </div>
                     ))}
                   </div>
 
-                  {/* Carrito Actual */}
-                  <label style={{ display: 'block', fontSize: '0.9rem', fontWeight: 'bold', color: '#f4f4f5', marginBottom: '8px' }}>Ítems en el Pedido:</label>
-                  {carrito.length === 0 ? (
-                    <p style={{ color: '#71717a', fontSize: '0.85rem', margin: 0 }}>No hay productos agregados todavía.</p>
-                  ) : (
+                  <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '8px' }}>Ítems en el Pedido:</label>
+                  {carrito.length === 0 ? <p style={{ color: '#71717a', fontSize: '0.85rem' }}>No hay productos.</p> : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '150px', overflowY: 'auto' }}>
                       {carrito.map(item => (
                         <div key={item.id_producto} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#18181b', padding: '8px 12px', borderRadius: '8px', border: '1px solid #27272a' }}>
-                          <span style={{ fontSize: '0.9rem', color: '#e4e4e7' }}>{item.nombre} (${item.precio} c/u)</span>
+                          <span style={{ fontSize: '0.9rem' }}>{item.nombre} (${item.precio})</span>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                            <button type="button" onClick={() => cambiarCantidadCarrito(item.id_producto, -1)} style={{ backgroundColor: '#27272a', color: '#fff', border: 'none', width: '24px', height: '24px', borderRadius: '4px', cursor: 'pointer' }}>-</button>
-                            <span style={{ fontWeight: 'bold', fontSize: '0.9rem' }}>{item.cantidad}</span>
-                            <button type="button" onClick={() => cambiarCantidadCarrito(item.id_producto, 1)} style={{ backgroundColor: '#27272a', color: '#fff', border: 'none', width: '24px', height: '24px', borderRadius: '4px', cursor: 'pointer' }}>+</button>
-                            <span style={{ fontWeight: 'bold', color: '#10b981', minWidth: '60px', textAlign: 'right' }}>${item.precio * item.cantidad}</span>
+                            <button type="button" onClick={() => cambiarCantidadCarrito(item.id_producto, -1)} style={{ backgroundColor: '#27272a', color: '#fff', border: 'none', width: '28px', height: '28px', borderRadius: '4px' }}>-</button>
+                            <span style={{ fontWeight: 'bold' }}>{item.cantidad}</span>
+                            <button type="button" onClick={() => cambiarCantidadCarrito(item.id_producto, 1)} style={{ backgroundColor: '#27272a', color: '#fff', border: 'none', width: '28px', height: '28px', borderRadius: '4px' }}>+</button>
                           </div>
                         </div>
                       ))}
@@ -671,42 +623,27 @@ export default function Pedidos() {
                   )}
                 </div>
 
-                {/* Total y Botón de Guardar */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #27272a', paddingTop: '15px', marginTop: '5px' }}>
-                  <span style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#f4f4f5' }}>Total: <span style={{ color: '#10b981' }}>${totalCarrito}</span></span>
-                  <div style={{ display: 'flex', gap: '10px' }}>
-                    <button type="button" onClick={reiniciarModal} style={{ backgroundColor: 'transparent', color: '#a1a1aa', border: '1px solid #3f3f46', padding: '10px 16px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>
-                      Cancelar
-                    </button>
-                    <button type="submit" disabled={guardandoPedido} style={{ backgroundColor: '#10b981', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>
-                      {guardandoPedido ? 'Guardando y Descontando Stock...' : 'Confirmar y Guardar Pedido'}
-                    </button>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #27272a', paddingTop: '15px', flexWrap: 'wrap', gap: '10px' }}>
+                  <span style={{ fontSize: '1.2rem', fontWeight: 'bold' }}>Total: <span style={{ color: '#10b981' }}>${totalCarrito}</span></span>
+                  <div className="grupo-botones">
+                    <button type="button" onClick={reiniciarModal} className="btn btn-oscuro">Cancelar</button>
+                    <button type="submit" disabled={guardandoPedido} className="btn btn-verde">{guardandoPedido ? 'Guardando...' : 'Confirmar Pedido'}</button>
                   </div>
                 </div>
-
               </form>
             )}
-
           </div>
         </div>
       )}
 
       {pedidosSeleccionados.length > 0 && (
-        <div style={{ position: 'fixed', bottom: '20px', backgroundColor: '#18181b', border: '1px solid #3f3f46', padding: '15px 25px', borderRadius: '12px', boxShadow: '0 10px 25px rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', gap: '20px', zIndex: 1100, flexWrap: 'wrap', maxWidth: '90%' }}>
-          <span style={{ fontWeight: 'bold', fontSize: '0.95rem', color: '#f4f4f5' }}>📦 {pedidosSeleccionados.length} seleccionados</span>
-          <select value={estadoMasivo} onChange={(e) => setEstadoMasivo(e.target.value)} style={{ padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid #3f3f46', backgroundColor: '#09090b', color: '#f4f4f5', fontSize: '0.9rem', fontWeight: '500', outline: 'none' }}>
-            <option value="Pendiente">Pendiente</option>
-            <option value="En Preparación">⚙️ En Preparación</option>
-            <option value="En Reparto">🛵 En Reparto</option>
-            <option value="Entregado">Entregado</option>
-            <option value="Cancelado">Cancelado</option>
+        <div className="barra-flotante">
+          <span style={{ fontWeight: 'bold' }}>📦 {pedidosSeleccionados.length} seleccionados</span>
+          <select value={estadoMasivo} onChange={(e) => setEstadoMasivo(e.target.value)} style={{ padding: '0.5rem', borderRadius: '8px', backgroundColor: '#09090b', color: '#f4f4f5', border: '1px solid #3f3f46' }}>
+            <option value="En Preparación">⚙️ En Preparación</option><option value="En Reparto">🛵 En Reparto</option><option value="Entregado">Entregado</option><option value="Cancelado">Cancelado</option>
           </select>
-          <button onClick={cambiarEstadoMasivo} style={{ backgroundColor: '#4f46e5', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.9rem' }}>
-            Aplicar Estado Masivo
-          </button>
-          <button onClick={() => setPedidosSeleccionados([])} style={{ backgroundColor: 'transparent', color: '#a1a1aa', border: 'none', cursor: 'pointer', fontSize: '0.9rem', fontWeight: 'bold' }}>
-            Limpiar selección
-          </button>
+          <button onClick={cambiarEstadoMasivo} className="btn" style={{ backgroundColor: '#4f46e5', color: '#fff' }}>Aplicar Masivo</button>
+          <button onClick={() => setPedidosSeleccionados([])} className="btn btn-oscuro">Limpiar</button>
         </div>
       )}
     </main>
