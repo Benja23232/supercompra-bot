@@ -580,6 +580,7 @@ export default function Pedidos() {
                     <label className="label-dark">Turno de Envío</label>
                     <select value={turnoElegido} onChange={(e) => setTurnoElegido(e.target.value)} className="input-dark">
                       <option value="Mañana">☀️ Mañana</option><option value="Tarde">🌙 Tarde</option><option value="Full">🚀 Envío Full</option>
+                      <option value="Mañana">📦 Retiro en el depósito</option>
                     </select>
                   </div>
                   <div>
