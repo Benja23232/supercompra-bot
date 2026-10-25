@@ -84,9 +84,10 @@ const CSS = `
 
 .sc-card { background: var(--paper); border: 1px solid var(--line); border-radius: 18px; overflow: hidden; display: flex; flex-direction: column; transition: transform 0.2s; }
 .sc-card:hover { transform: translateY(-2px); box-shadow: 0 8px 16px rgba(0,0,0,0.05); }
-.sc-thumb { aspect-ratio: 1 / 1; background-color: #F1EBD8; background-size: cover; background-position: center; display: grid; place-items: center; font-size: 2.5rem; position: relative; }
-.sc-low { position: absolute; top: 10px; left: 10px; background: var(--gold-soft); color: #7A5612; font-size: .75rem; font-weight: 700; padding: 4px 10px; border-radius: 999px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-.sc-out { position: absolute; inset: 0; background: rgba(0,0,0,0.4); display: grid; place-items: center; color: #fff; font-weight: 800; font-size: .95rem; text-transform: uppercase; letter-spacing: .05em; }
+.sc-thumb { aspect-ratio: 1 / 1; background-color: #F1EBD8; display: grid; place-items: center; font-size: 2.5rem; position: relative; overflow: hidden; }
+.sc-thumb-img { width: 100%; height: 100%; object-fit: contain; padding: 10px; background-color: #fff; }
+.sc-low { position: absolute; top: 10px; left: 10px; background: var(--gold-soft); color: #7A5612; font-size: .75rem; font-weight: 700; padding: 4px 10px; border-radius: 999px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); z-index: 2; }
+.sc-out { position: absolute; inset: 0; background: rgba(0,0,0,0.4); display: grid; place-items: center; color: #fff; font-weight: 800; font-size: .95rem; text-transform: uppercase; letter-spacing: .05em; z-index: 2; }
 .sc-body { padding: 16px; display: flex; flex-direction: column; justify-content: space-between; flex-grow: 1; gap: 16px; }
 .sc-name { margin: 0; font-size: 1rem; font-weight: 700; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .sc-price { margin: 4px 0 0; font-size: 1.3rem; font-weight: 800; color: var(--green); }
@@ -99,7 +100,7 @@ const CSS = `
 .sc-step button:hover { background: var(--green); color: #fff; }
 .sc-step span { font-weight: 800; font-size: 1.1rem; min-width: 32px; text-align: center; }
 
-/* Categorías corregidas y responsivas */
+/* Categorías */
 .sc-tabs { display: flex; gap: 8px; flex-wrap: wrap; padding: 4px 4px 12px; }
 .sc-tabs button { flex: 0 1 auto; padding: 8px 16px; border-radius: 999px; border: 1.5px solid var(--line); background: #fff; color: var(--ink); font-weight: 700; font-size: .9rem; cursor: pointer; transition: all 0.2s; }
 .sc-tabs button span { margin-left: 6px; font-weight: 500; opacity: .6; font-size: 0.9em; }
@@ -134,7 +135,7 @@ const CSS = `
 .sc-bar button { padding: 14px 24px; border: none; border-radius: 12px; background: var(--gold); color: #fff; font-weight: 800; font-size: 1rem; cursor: pointer; transition: background 0.2s; }
 .sc-bar button:hover { background: #B07D1E; }
 
-/* Footer pegado abajo */
+/* Footer */
 .sc-footer { margin-top: 60px; padding: 32px 20px; background: #123F26; color: #CFE0D4; border-top: 1px solid rgba(230,240,205,0.1); text-align: center; width: 100%; }
 .sc-footer-in { max-width: 800px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; align-items: center; }
 .sc-footer p { margin: 0; font-size: .95rem; line-height: 1.5; }
@@ -144,8 +145,6 @@ const CSS = `
 .sc-footer-brand b { color: var(--gold); }
 
 .sc button:focus-visible, .sc-add:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
-
-/* ---------------- MEDIAS QUERIES RESPONSIVAS ---------------- */
 
 @media (max-width: 900px) {
   .sc-grid { grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); }
@@ -207,7 +206,8 @@ export default function CatalogoBebidas() {
       const { data } = await supabase
         .from('productos')
         .select('*')
-        .ilike('categoria', '%Alcohol%');
+        .ilike('categoria', '%Alcohol%')
+        .not('categoria', 'ilike', '%sin alcohol%'); // <-- Excluye bebidas sin alcohol
 
       if (data) {
         setProductos(data);
@@ -340,45 +340,53 @@ export default function CatalogoBebidas() {
 
         {/* GRILLA DE PRODUCTOS */}
         {secciones.map(sec => (
-        <section key={sec.id} className="sc-sec">
-        <h2 className="sc-sec-h">{sec.icono} {sec.nombre}</h2>
-        <div className="sc-grid">
-          {sec.items.map(p => {
-            const cant = carrito[p.id_producto] || 0;
-            const sinStock = p.stock_fisico <= 0;
-            return (
-              <div key={p.id_producto} className="sc-card">
-                <div
-                  className="sc-thumb"
-                  style={p.image_url ? { backgroundImage: `url(${p.image_url})` } : undefined}
-                >
-                  {!p.image_url && '🍷'}
-                  {sinStock && <div className="sc-out">Agotado</div>}
-                  {!sinStock && p.stock_fisico <= 5 && <span className="sc-low">Quedan {p.stock_fisico}</span>}
-                </div>
-                <div className="sc-body">
-                  <div>
-                    <h3 className="sc-name">{p.nombre}</h3>
-                    <p className="sc-price">${p.precio}</p>
-                  </div>
-
-                  {sinStock ? (
-                    <button className="sc-add" disabled>Sin stock</button>
-                  ) : cant > 0 ? (
-                    <div className="sc-step">
-                      <button onClick={() => quitar(p.id_producto)} aria-label="Quitar uno">−</button>
-                      <span>{cant}</span>
-                      <button onClick={() => agregar(p.id_producto)} aria-label="Agregar uno">+</button>
+          <section key={sec.id} className="sc-sec">
+            <h2 className="sc-sec-h">{sec.icono} {sec.nombre}</h2>
+            <div className="sc-grid">
+              {sec.items.map(p => {
+                const cant = carrito[p.id_producto] || 0;
+                const sinStock = p.stock_fisico <= 0;
+                return (
+                  <div key={p.id_producto} className="sc-card">
+                    <div className="sc-thumb">
+                      {p.image_url ? (
+                        <img 
+                          src={p.image_url} 
+                          alt={p.nombre} 
+                          className="sc-thumb-img"
+                          onError={(e) => {
+                            (e.target as HTMLElement).style.display = 'none';
+                          }}
+                        />
+                      ) : (
+                        <span>🍷</span>
+                      )}
+                      {sinStock && <div className="sc-out">Agotado</div>}
+                      {!sinStock && p.stock_fisico <= 5 && <span className="sc-low">Quedan {p.stock_fisico}</span>}
                     </div>
-                  ) : (
-                    <button className="sc-add" onClick={() => agregar(p.id_producto)}>Agregar</button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-        </section>
+                    <div className="sc-body">
+                      <div>
+                        <h3 className="sc-name">{p.nombre}</h3>
+                        <p className="sc-price">${p.precio}</p>
+                      </div>
+
+                      {sinStock ? (
+                        <button className="sc-add" disabled>Sin stock</button>
+                      ) : cant > 0 ? (
+                        <div className="sc-step">
+                          <button onClick={() => quitar(p.id_producto)} aria-label="Quitar uno">−</button>
+                          <span>{cant}</span>
+                          <button onClick={() => agregar(p.id_producto)} aria-label="Agregar uno">+</button>
+                        </div>
+                      ) : (
+                        <button className="sc-add" onClick={() => agregar(p.id_producto)}>Agregar</button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
         ))}
 
         {productos.length === 0 && <p className="sc-empty">No hay bebidas en stock por el momento.</p>}
@@ -389,14 +397,14 @@ export default function CatalogoBebidas() {
             <h2>Tus datos</h2>
             <form onSubmit={enviarPedidoWeb} className="sc-form">
               <div className="sc-row">
-              <div>
-                <label className="sc-label">Nombre y apellido</label>
-                <input className="sc-input" type="text" required value={nombre} onChange={e => setNombre(e.target.value)} />
-              </div>
-              <div>
-                <label className="sc-label">Número de WhatsApp (Ej: 2392480035)</label>
-                <input className="sc-input" type="tel" required value={telefono} onChange={e => setTelefono(e.target.value)} />
-              </div>
+                <div>
+                  <label className="sc-label">Nombre y apellido</label>
+                  <input className="sc-input" type="text" required value={nombre} onChange={e => setNombre(e.target.value)} />
+                </div>
+                <div>
+                  <label className="sc-label">Número de WhatsApp (Ej: 2392480035)</label>
+                  <input className="sc-input" type="tel" required value={telefono} onChange={e => setTelefono(e.target.value)} />
+                </div>
               </div>
 
               <div>
