@@ -212,7 +212,7 @@ export default function Pedidos() {
       carrito.forEach(i => {
         resumen += `▪️ ${i.cantidad}x ${i.nombre} ($${i.precio * i.cantidad})\n`;
       });
-      resumen += `\n💰 *TOTAL A PAGAR: $${totalCarrito}*\n\n¡Gracias por tu compra! 🙏`;
+      resumen += `\n💰 *TOTAL A PAGAR: $${totalCarrito}*\n\n¡Gracias por tu compra! 🤝`;
 
       setTicketGenerado(resumen);
       fetchPedidos();
